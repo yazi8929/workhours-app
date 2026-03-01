@@ -23,9 +23,10 @@ jobs:
           mkdir app assets
           echo 'export default function(){return <div>App</div>}' > app/_layout.tsx
           echo '{"expo":{"name":"工时统计","slug":"workhours","version":"1.0.0","android":{"package":"com.workhours.app"}}}' > app.json
-      - run: cd client && npx expo prebuild --platform android
+      - run: cd client && npx expo prebuild --platform android --yes
       - run: cd client/android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: app
           path: client/android/app/build/outputs/apk/debug/app-debug.apk
+
