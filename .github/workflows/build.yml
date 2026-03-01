@@ -12,47 +12,26 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - run: npm install -g @expo/cli eas-cli
+      - run: npm install -g react-native-cli
       - run: |
-          mkdir -p client
-          cd client
-          npm init -y
+          npx react-native@latest init WorkHoursApp --skip-install
+          cd WorkHoursApp
+          npm install
+          npm install @react-navigation/native @react-navigation/stack react-native-screens react-native-safe-area-context
       - run: |
-          cd client
-          cat > package.json << 'EOF'
+          cd WorkHoursApp
+          cat > app.json << 'EOF'
           {
-            "name": "workhours",
-            "version": "1.0.0",
-            "main": "expo-router/entry",
-            "scripts": {
-              "start": "expo start",
-              "android": "expo run:android",
-              "ios": "expo run:ios"
-            },
-            "dependencies": {
-              "expo": "~52.0.0",
-              "react": "18.3.1",
-              "react-native": "0.76.5",
-              "expo-router": "~4.0.0",
-              "expo-status-bar": "~2.0.0"
-            }
+            "name": "工时统计",
+            "displayName": "工时统计"
           }
           EOF
-      - run: |
-          cd client
-          mkdir app assets
-          echo 'export default function(){return <div>工时统计</div>}' > app/_layout.tsx
-          echo '{"expo":{"name":"工时统计","slug":"workhours","version":"1.0.0","android":{"package":"com.workhours.app"}}}' > app.json
-          echo "placeholder" > assets/icon.png
-      - name: Build with EAS
+      - name: Build Android APK
         run: |
-          cd client
-          npx eas build --platform android --local --output ../app.apk
-        env:
-          EXPO_NO_DOCTOR: 1
-          EXPO_SKIP_VALIDATION: 1
+          cd WorkHoursApp/android
+          chmod +x gradlew
+          ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: app
-          path: app.apk
-
+          path: WorkHoursApp/android/app/build/outputs/apk/debug/app-debug.apk
