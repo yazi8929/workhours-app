@@ -1,4 +1,4 @@
-name: Build APK
+name: Build
 on: [push]
 jobs:
   build:
@@ -12,18 +12,20 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+      - run: npm install -g @expo/cli
       - run: |
           mkdir -p client
           cd client
-          echo '{"name":"workhours","version":"1.0.0"}' > package.json
+          npm init -y
+          npm install expo@^50.0.0
+      - run: |
+          cd client
+          mkdir app assets
+          echo 'export default function(){return <div>App</div>}' > app/_layout.tsx
           echo '{"expo":{"name":"工时统计","slug":"workhours","version":"1.0.0","android":{"package":"com.workhours.app"}}}' > app.json
-          mkdir -p app assets
-          echo "placeholder" > assets/icon.png
-          echo 'import {Text,View} from "react-native";export default function(){return <View style={{flex:1,justifyContent:"center",alignItems:"center"}}><Text>工时统计</Text></View>}' > app/index.tsx
-          echo 'import {Stack} from "expo-router";export default function(){return <Stack><Stack.Screen name="index"/></Stack>}' > app/_layout.tsx
-      - run: npm install -g @expo/cli && cd client && npx expo prebuild --platform android --clean
-      - run: cd client/android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - run: cd client && npx expo prebuild --platform android
+      - run: cd client/android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: APK
+          name: app
           path: client/android/app/build/outputs/apk/debug/app-debug.apk
