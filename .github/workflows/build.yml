@@ -12,9 +12,8 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - run: npm install -g react-native-cli
       - run: |
-          npx react-native@latest init WorkHoursApp --skip-install
+          npx @react-native-community/cli init WorkHoursApp --skip-install
           cd WorkHoursApp
           npm install
           npm install @react-navigation/native @react-navigation/stack react-native-screens react-native-safe-area-context
@@ -35,3 +34,4 @@ jobs:
         with:
           name: app
           path: WorkHoursApp/android/app/build/outputs/apk/debug/app-debug.apk
+
