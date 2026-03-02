@@ -14,24 +14,80 @@ jobs:
           java-version: '17'
       - run: |
           npx @react-native-community/cli init WorkHoursApp --skip-install
-          cd WorkHoursApp
-          npm install
-          npm install @react-navigation/native @react-navigation/stack react-native-screens react-native-safe-area-context
       - run: |
           cd WorkHoursApp
-          cat > app.json << 'EOF'
-          {
-            "name": "工时统计",
-            "displayName": "工时统计"
+          npm install
+          npm install @react-navigation/native @react-navigation/native-stack react-native-screens react-native-safe-area-context
+      - run: |
+          cd WorkHoursApp
+          
+          # 创建主页
+          mkdir -p src/screens
+          cat > src/screens/HomeScreen.tsx << 'EOF'
+          import React from 'react';
+          import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+
+          export default function HomeScreen() {
+            const workLogs = [
+              { date: '2026-03-01', project: '项目A', workers: '张三, 李四', hours: '2天' },
+              { date: '2026-03-02', project: '项目B', workers: '王五', hours: '1天' },
+            ];
+
+            return (
+              <View style={styles.container}>
+                <View style={styles.header}>
+                  <Text style={styles.headerTitle}>工时统计</Text>
+                </View>
+                
+                <ScrollView style={styles.content}>
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>今日工时</Text>
+                    <Text style={styles.cardValue}>8 人</Text>
+                  </View>
+
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>本月工作日</Text>
+                    <Text style={styles.cardValue}>120 天</Text>
+                  </View>
+
+                  <Text style={styles.sectionTitle}>最近记录</Text>
+                  {workLogs.map((log, index) => (
+                    <View key={index} style={styles.logItem}>
+                      <Text style={styles.logDate}>{log.date}</Text>
+                      <Text style={styles.logProject}>{log.project}</Text>
+                      <Text style={styles.logWorkers}>人员: {log.workers}</Text>
+                      <Text style={styles.logHours}>工时: {log.hours}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+
+                <TouchableOpacity style={styles.addButton}>
+                  <Text style={styles.addButtonText}>+ 记录工时</Text>
+                </TouchableOpacity>
+              </View>
+            );
           }
-          EOF
-      - name: Build Android APK
-        run: |
-          cd WorkHoursApp/android
-          chmod +x gradlew
-          ./gradlew assembleDebug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: app
-          path: WorkHoursApp/android/app/build/outputs/apk/debug/app-debug.apk
+
+          const styles = StyleSheet.create({
+            container: {
+              flex: 1,
+              backgroundColor: '#f5f5f5',
+            },
+            header: {
+              backgroundColor: '#4F46E5',
+              padding: 20,
+              paddingTop: 40,
+            },
+            headerTitle: {
+              color: '#fff',
+              fontSize: 24,
+              fontWeight: 'bold',
+            },
+            content: {
+              flex: 1,
+              padding: 20,
+            },
+            card: {
+              backgroundColor: '#fff',
+
 
