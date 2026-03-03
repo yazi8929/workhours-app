@@ -9,15 +9,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install pnpm
-        run: npm install -g pnpm
-      - name: Install root dependencies
-        run: pnpm install --no-frozen-lockfile
-      - name: Install server dependencies
-        run: |
-          cd server
-          pnpm install --no-frozen-lockfile
-      - name: Install client dependencies
+      - name: Install client dependencies only
         run: |
           cd client
           npm install
