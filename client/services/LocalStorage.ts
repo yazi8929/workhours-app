@@ -1,301 +1,234 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// 存储键
-const STORAGE_KEYS = {
-  PROJECTS: 'workhours_projects',
-  WORKERS: 'workhours_workers',
-  WORK_LOGS: 'workhours_worklogs',
-};
+// ========== 类型定义 ==========
 
-// 生成唯一 ID
-const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
-
-// ===== 项目管理 =====
 export interface Project {
-  id: string;
+  id: number;
   name: string;
+  description?: string;
   createdAt: string;
 }
 
-export const projectService = {
-  // 获取所有项目
-  async getProjects(): Promise<Project[]> {
-    try {
-      const data = await AsyncStorage.getItem(STORAGE_KEYS.PROJECTS);
-      return data ? JSON.parse(data) : [];
-    } catch (error) {
-      console.error('获取项目列表失败:', error);
-      return [];
-    }
-  },
-
-  // 创建项目
-  async createProject(name: string): Promise<Project> {
-    try {
-      const projects = await this.getProjects();
-      const newProject: Project = {
-        id: generateId(),
-        name,
-        createdAt: new Date().toISOString(),
-      };
-      projects.push(newProject);
-      await AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
-      return newProject;
-    } catch (error) {
-      console.error('创建项目失败:', error);
-      throw error;
-    }
-  },
-
-  // 更新项目
-  async updateProject(id: string, name: string): Promise<void> {
-    try {
-      const projects = await this.getProjects();
-      const index = projects.findIndex(p => p.id === id);
-      if (index !== -1) {
-        projects[index].name = name;
-        await AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
-      }
-    } catch (error) {
-      console.error('更新项目失败:', error);
-      throw error;
-    }
-  },
-
-  // 删除项目
-  async deleteProject(id: string): Promise<void> {
-    try {
-      const projects = await this.getProjects();
-      const filtered = projects.filter(p => p.id !== id);
-      await AsyncStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(filtered));
-    } catch (error) {
-      console.error('删除项目失败:', error);
-      throw error;
-    }
-  },
-};
-
-// ===== 人员管理 =====
 export interface Worker {
-  id: string;
+  id: number;
   name: string;
+  role?: string;
   createdAt: string;
-}
-
-export const workerService = {
-  // 获取所有人员
-  async getWorkers(): Promise<Worker[]> {
-    try {
-      const data = await AsyncStorage.getItem(STORAGE_KEYS.WORKERS);
-      return data ? JSON.parse(data) : [];
-    } catch (error) {
-      console.error('获取人员列表失败:', error);
-      return [];
-    }
-  },
-
-  // 创建人员
-  async createWorker(name: string): Promise<Worker> {
-    try {
-      const workers = await this.getWorkers();
-      const newWorker: Worker = {
-        id: generateId(),
-        name,
-        createdAt: new Date().toISOString(),
-      };
-      workers.push(newWorker);
-      await AsyncStorage.setItem(STORAGE_KEYS.WORKERS, JSON.stringify(workers));
-      return newWorker;
-    } catch (error) {
-      console.error('创建人员失败:', error);
-      throw error;
-    }
-  },
-
-  // 更新人员
-  async updateWorker(id: string, name: string): Promise<void> {
-    try {
-      const workers = await this.getWorkers();
-      const index = workers.findIndex(w => w.id === id);
-      if (index !== -1) {
-        workers[index].name = name;
-        await AsyncStorage.setItem(STORAGE_KEYS.WORKERS, JSON.stringify(workers));
-      }
-    } catch (error) {
-      console.error('更新人员失败:', error);
-      throw error;
-    }
-  },
-
-  // 删除人员
-  async deleteWorker(id: string): Promise<void> {
-    try {
-      const workers = await this.getWorkers();
-      const filtered = workers.filter(w => w.id !== id);
-      await AsyncStorage.setItem(STORAGE_KEYS.WORKERS, JSON.stringify(filtered));
-    } catch (error) {
-      console.error('删除人员失败:', error);
-      throw error;
-    }
-  },
-};
-
-// ===== 工时记录 =====
-export interface WorkerHours {
-  id: string;
-  hours: number;
 }
 
 export interface WorkLog {
-  id: string;
-  projectId: string;
+  id: number;
+  projectId: number;
   projectName: string;
-  date: string;
-  description: string;
-  workers: WorkerHours[];
+  workerId: number;
+  workerName: string;
+  workDate: string;
+  hours: number;
+  description?: string;
   createdAt: string;
 }
 
+export interface WorkerHours {
+  workerId: number;
+  workerName: string;
+  totalHours: number;
+}
+
+// ========== Storage Keys ==========
+
+const STORAGE_KEYS = {
+  PROJECTS: '@workhours_projects',
+  WORKERS: '@workhours_workers',
+  WORK_LOGS: '@workhours_work_logs',
+};
+
+// ========== 通用 CRUD 函数 ==========
+
+async function getAll<T>(key: string): Promise<T[]> {
+  try {
+    const data = await AsyncStorage.getItem(key);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error(`Error reading ${key}:`, error);
+    return [];
+  }
+}
+
+async function saveAll<T>(key: string, items: T[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(key, JSON.stringify(items));
+  } catch (error) {
+    console.error(`Error saving ${key}:`, error);
+  }
+}
+
+function generateId(items: { id: number }[]): number {
+  if (items.length === 0) return 1;
+  return Math.max(...items.map(item => item.id)) + 1;
+}
+
+// ========== 项目服务 ==========
+
+export const projectService = {
+  getAll: async (): Promise<Project[]> => {
+    return getAll<Project>(STORAGE_KEYS.PROJECTS);
+  },
+
+  getById: async (id: number): Promise<Project | null> => {
+    const projects = await projectService.getAll();
+    return projects.find(p => p.id === id) || null;
+  },
+
+  create: async (data: Omit<Project, 'id' | 'createdAt'>): Promise<Project> => {
+    const projects = await projectService.getAll();
+    const newProject: Project = {
+      ...data,
+      id: generateId(projects),
+      createdAt: new Date().toISOString(),
+    };
+    await saveAll(STORAGE_KEYS.PROJECTS, [...projects, newProject]);
+    return newProject;
+  },
+
+  update: async (id: number, data: Partial<Project>): Promise<Project | null> => {
+    const projects = await projectService.getAll();
+    const index = projects.findIndex(p => p.id === id);
+    if (index === -1) return null;
+    
+    const updatedProject = { ...projects[index], ...data };
+    const newProjects = [...projects];
+    newProjects[index] = updatedProject;
+    await saveAll(STORAGE_KEYS.PROJECTS, newProjects);
+    return updatedProject;
+  },
+
+  delete: async (id: number): Promise<boolean> => {
+    const projects = await projectService.getAll();
+    const newProjects = projects.filter(p => p.id !== id);
+    await saveAll(STORAGE_KEYS.PROJECTS, newProjects);
+    return true;
+  },
+};
+
+// ========== 人员服务 ==========
+
+export const workerService = {
+  getAll: async (): Promise<Worker[]> => {
+    return getAll<Worker>(STORAGE_KEYS.WORKERS);
+  },
+
+  getById: async (id: number): Promise<Worker | null> => {
+    const workers = await workerService.getAll();
+    return workers.find(w => w.id === id) || null;
+  },
+
+  create: async (data: Omit<Worker, 'id' | 'createdAt'>): Promise<Worker> => {
+    const workers = await workerService.getAll();
+    const newWorker: Worker = {
+      ...data,
+      id: generateId(workers),
+      createdAt: new Date().toISOString(),
+    };
+    await saveAll(STORAGE_KEYS.WORKERS, [...workers, newWorker]);
+    return newWorker;
+  },
+
+  update: async (id: number, data: Partial<Worker>): Promise<Worker | null> => {
+    const workers = await workerService.getAll();
+    const index = workers.findIndex(w => w.id === id);
+    if (index === -1) return null;
+    
+    const updatedWorker = { ...workers[index], ...data };
+    const newWorkers = [...workers];
+    newWorkers[index] = updatedWorker;
+    await saveAll(STORAGE_KEYS.WORKERS, newWorkers);
+    return updatedWorker;
+  },
+
+  delete: async (id: number): Promise<boolean> => {
+    const workers = await workerService.getAll();
+    const newWorkers = workers.filter(w => w.id !== id);
+    await saveAll(STORAGE_KEYS.WORKERS, newWorkers);
+    return true;
+  },
+};
+
+// ========== 工时记录服务 ==========
+
 export const workLogService = {
-  // 获取所有工时记录
-  async getWorkLogs(): Promise<WorkLog[]> {
-    try {
-      const data = await AsyncStorage.getItem(STORAGE_KEYS.WORK_LOGS);
-      return data ? JSON.parse(data) : [];
-    } catch (error) {
-      console.error('获取工时记录失败:', error);
-      return [];
-    }
+  getAll: async (): Promise<WorkLog[]> => {
+    return getAll<WorkLog>(STORAGE_KEYS.WORK_LOGS);
   },
 
-  // 创建工时记录
-  async createWorkLog(
-    projectId: string,
-    projectName: string,
-    date: string,
-    description: string,
-    workers: WorkerHours[]
-  ): Promise<WorkLog> {
-    try {
-      const workLogs = await this.getWorkLogs();
-      const newWorkLog: WorkLog = {
-        id: generateId(),
-        projectId,
-        projectName,
-        date,
-        description,
-        workers,
-        createdAt: new Date().toISOString(),
-      };
-      workLogs.unshift(newWorkLog); // 添加到开头
-      await AsyncStorage.setItem(STORAGE_KEYS.WORK_LOGS, JSON.stringify(workLogs));
-      return newWorkLog;
-    } catch (error) {
-      console.error('创建工时记录失败:', error);
-      throw error;
-    }
+  getByProjectId: async (projectId: number): Promise<WorkLog[]> => {
+    const logs = await workLogService.getAll();
+    return logs.filter(log => log.projectId === projectId);
   },
 
-  // 更新工时记录
-  async updateWorkLog(
-    id: string,
-    projectId: string,
-    projectName: string,
-    date: string,
-    description: string,
-    workers: WorkerHours[]
-  ): Promise<void> {
-    try {
-      const workLogs = await this.getWorkLogs();
-      const index = workLogs.findIndex(w => w.id === id);
-      if (index !== -1) {
-        workLogs[index] = {
-          ...workLogs[index],
-          projectId,
-          projectName,
-          date,
-          description,
-          workers,
-        };
-        await AsyncStorage.setItem(STORAGE_KEYS.WORK_LOGS, JSON.stringify(workLogs));
-      }
-    } catch (error) {
-      console.error('更新工时记录失败:', error);
-      throw error;
-    }
+  getByWorkerId: async (workerId: number): Promise<WorkLog[]> => {
+    const logs = await workLogService.getAll();
+    return logs.filter(log => log.workerId === workerId);
   },
 
-  // 删除工时记录
-  async deleteWorkLog(id: string): Promise<void> {
-    try {
-      const workLogs = await this.getWorkLogs();
-      const filtered = workLogs.filter(w => w.id !== id);
-      await AsyncStorage.setItem(STORAGE_KEYS.WORK_LOGS, JSON.stringify(filtered));
-    } catch (error) {
-      console.error('删除工时记录失败:', error);
-      throw error;
-    }
+  getByDate: async (date: string): Promise<WorkLog[]> => {
+    const logs = await workLogService.getAll();
+    return logs.filter(log => log.workDate === date);
+  },
+
+  create: async (data: Omit<WorkLog, 'id' | 'createdAt'>): Promise<WorkLog> => {
+    const logs = await workLogService.getAll();
+    const newLog: WorkLog = {
+      ...data,
+      id: generateId(logs),
+      createdAt: new Date().toISOString(),
+    };
+    await saveAll(STORAGE_KEYS.WORK_LOGS, [...logs, newLog]);
+    return newLog;
+  },
+
+  update: async (id: number, data: Partial<WorkLog>): Promise<WorkLog | null> => {
+    const logs = await workLogService.getAll();
+    const index = logs.findIndex(log => log.id === id);
+    if (index === -1) return null;
+    
+    const updatedLog = { ...logs[index], ...data };
+    const newLogs = [...logs];
+    newLogs[index] = updatedLog;
+    await saveAll(STORAGE_KEYS.WORK_LOGS, newLogs);
+    return updatedLog;
+  },
+
+  delete: async (id: number): Promise<boolean> => {
+    const logs = await workLogService.getAll();
+    const newLogs = logs.filter(log => log.id !== id);
+    await saveAll(STORAGE_KEYS.WORK_LOGS, newLogs);
+    return true;
   },
 
   // 获取月度统计
-  async getMonthlyStats(year: number, month: number): Promise<{
-    projectStats: Array<{
-      projectId: string;
-      projectName: string;
-      workers: Array<{
-        workerId: string;
-        workerName: string;
-        totalHours: number;
-      }>;
-    }>;
-  }> {
-    try {
-      const workLogs = await this.getWorkLogs();
-      const workers = await workerService.getWorkers();
+  getMonthlyStats: async (year: number, month: number): Promise<WorkerHours[]> => {
+    const logs = await workLogService.getAll();
+    const filteredLogs = logs.filter(log => {
+      const logDate = new Date(log.workDate);
+      return logDate.getFullYear() === year && logDate.getMonth() === month;
+    });
 
-      // 筛选指定年月的记录
-      const filteredLogs = workLogs.filter(log => {
-        const logDate = new Date(log.date);
-        return logDate.getFullYear() === year && logDate.getMonth() === month;
-      });
+    const workerMap = new Map<number, WorkerHours>();
 
-      // 按项目分组统计
-      const projectMap = new Map<string, Map<string, number>>();
-
-      filteredLogs.forEach(log => {
-        if (!projectMap.has(log.projectId)) {
-          projectMap.set(log.projectId, new Map());
-        }
-        const workerMap = projectMap.get(log.projectId)!;
-
-        log.workers.forEach(w => {
-          const currentHours = workerMap.get(w.id) || 0;
-          workerMap.set(w.id, currentHours + w.hours);
+    filteredLogs.forEach(log => {
+      const existing = workerMap.get(log.workerId);
+      if (existing) {
+        existing.totalHours += log.hours;
+      } else {
+        workerMap.set(log.workerId, {
+          workerId: log.workerId,
+          workerName: log.workerName,
+          totalHours: log.hours,
         });
-      });
+      }
+    });
 
-      // 转换为数组格式
-      const projectStats = Array.from(projectMap.entries()).map(([projectId, workerMap]) => {
-        const workerStats = Array.from(workerMap.entries()).map(([workerId, totalHours]) => {
-          const worker = workers.find(w => w.id === workerId);
-          return {
-            workerId,
-            workerName: worker?.name || '未知',
-            totalHours,
-          };
-        });
-
-        return {
-          projectId,
-          projectName: filteredLogs.find(l => l.projectId === projectId)?.projectName || '未知',
-          workers: workerStats,
-        };
-      });
-
-      return { projectStats };
-    } catch (error) {
-      console.error('获取月度统计失败:', error);
-      return { projectStats: [] };
-    }
+    return Array.from(workerMap.values()).sort((a, b) => b.totalHours - a.totalHours);
   },
 };
+
