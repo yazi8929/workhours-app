@@ -1,232 +1,211 @@
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
-  Text,
+  ScrollView,
   TouchableOpacity,
   Alert,
-  ScrollView,
-  Platform,
-  Modal,
   TextInput,
+  Modal,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { FontAwesome6 } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
-
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/hooks/useTheme';
 import { createStyles } from './styles';
-
-interface Project {
-  id: number;
-  name: string;
-}
+import { projectService, type Project } from '@/services/LocalStorage';
 
 export default function ProjectsScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
   const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [projectName, setProjectName] = useState('');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [projectName, setProjectName] = useState('');
+  const [description, setDescription] = useState('');
 
-  // 获取项目列表
   const fetchProjects = useCallback(async () => {
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/projects`);
-      const data = await response.json();
-      setProjects(data.projects || []);
-    } catch (error: any) {
+      const data = await projectService.getAll();
+      setProjects(data);
+    } catch (error) {
       console.error('获取项目列表失败:', error);
+      Alert.alert('错误', '获取项目列表失败');
     }
   }, []);
 
-  // 每次进入页面刷新数据
   useFocusEffect(
     useCallback(() => {
       fetchProjects();
     }, [fetchProjects])
   );
 
-  // 编辑项目
-  const handleEdit = (project: Project) => {
-    setEditingProject(project);
-    setProjectName(project.name);
+  const handleAdd = () => {
+    setEditingProject(null);
+    setProjectName('');
+    setDescription('');
     setModalVisible(true);
   };
 
-  // 保存项目（新增或更新）
-  const handleSave = useCallback(async () => {
+  const handleEdit = (project: Project) => {
+    setEditingProject(project);
+    setProjectName(project.name);
+    setDescription(project.description || '');
+    setModalVisible(true);
+  };
+
+  const handleSave = async () => {
     if (!projectName.trim()) {
-      Alert.alert('提示', '项目名称不能为空');
+      Alert.alert('提示', '请输入项目名称');
       return;
     }
 
-    setLoading(true);
-
     try {
-      const isEdit = editingProject !== null;
-      const url = isEdit
-        ? `${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/projects/${editingProject.id}`
-        : `${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/projects`;
-
-      const response = await fetch(url, {
-        method: isEdit ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: projectName.trim() }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || '保存失败');
+      if (editingProject) {
+        await projectService.update(editingProject.id, {
+          name: projectName,
+          description: description || undefined,
+        });
+        Alert.alert('成功', '项目已更新');
+      } else {
+        await projectService.create({
+          name: projectName,
+          description: description || undefined,
+        });
+        Alert.alert('成功', '项目已添加');
       }
-
-      Alert.alert('成功', isEdit ? '项目已更新' : '项目已添加');
       setModalVisible(false);
-      setEditingProject(null);
-      setProjectName('');
       fetchProjects();
     } catch (error: any) {
-      console.error('保存项目失败:', error);
+      console.error('保存失败:', error);
       Alert.alert('错误', error.message || '保存失败');
-    } finally {
-      setLoading(false);
     }
-  }, [projectName, editingProject, fetchProjects]);
-
-  // 复制项目名称到剪贴板
-  const handleCopy = async (project: Project) => {
-    await Clipboard.setStringAsync(project.name);
-    Alert.alert('提示', '项目名称已复制');
   };
 
-  // 渲染项目卡片
-  const renderProject = (project: Project) => {
-    return (
-      <ThemedView key={project.id} level="tertiary" style={styles.projectCard}>
-        <View style={styles.projectInfo}>
-          <View style={styles.projectIcon}>
-            <FontAwesome6 name="folder" size={20} color={theme.primary} />
-          </View>
-          <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.projectName}>
-            {project.name}
-          </ThemedText>
-        </View>
-        <View style={styles.projectActions}>
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: theme.primary }]}
-            onPress={() => handleCopy(project)}
-          >
-            <FontAwesome6 name="copy" size={16} color="white" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: theme.border }]}
-            onPress={() => handleEdit(project)}
-          >
-            <FontAwesome6 name="pen" size={16} color={theme.textPrimary} />
-          </TouchableOpacity>
-        </View>
-      </ThemedView>
-    );
+  const handleDelete = async (id: number) => {
+    Alert.alert('确认', '确定要删除这个项目吗？', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '删除',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await projectService.delete(id);
+            Alert.alert('成功', '项目已删除');
+            fetchProjects();
+          } catch (error: any) {
+            console.error('删除失败:', error);
+            Alert.alert('错误', error.message || '删除失败');
+          }
+        },
+      },
+    ]);
   };
 
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <View style={styles.container}>
         <View style={styles.header}>
-          <View>
-            <ThemedText variant="h2" color={theme.textPrimary}>项目管理</ThemedText>
-            <ThemedText variant="caption" color={theme.textMuted}>管理项目信息</ThemedText>
-          </View>
-          <TouchableOpacity
-            style={[styles.addButton, { backgroundColor: theme.primary }]}
-            onPress={() => {
-              setEditingProject(null);
-              setProjectName('');
-              setModalVisible(true);
-            }}
-          >
-            <FontAwesome6 name="plus" size={20} color="white" />
+          <ThemedText variant="h2" color={theme.textPrimary}>
+            项目管理
+          </ThemedText>
+          <TouchableOpacity onPress={handleAdd} style={styles.addButton}>
+            <FontAwesome6 name="plus" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
 
-        <ScrollView
-          style={styles.content}
-          contentContainerStyle={styles.contentContainer}
-          showsVerticalScrollIndicator={false}
-        >
+        <ScrollView style={styles.list}>
           {projects.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <FontAwesome6 name="folder-open" size={60} color={theme.textMuted} />
-              <ThemedText variant="bodyMedium" color={theme.textMuted} style={styles.emptyText}>
+            <ThemedView level="default" style={styles.emptyState}>
+              <FontAwesome6 name="folder-open" size={48} color={theme.textMuted} />
+              <ThemedText variant="body" color={theme.textMuted} style={{ marginTop: 16 }}>
                 暂无项目
               </ThemedText>
-            </View>
+            </ThemedView>
           ) : (
-            projects.map(renderProject)
+            projects.map(project => (
+              <ThemedView key={project.id} level="default" style={styles.projectCard}>
+                <View style={styles.projectInfo}>
+                  <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                    {project.name}
+                  </ThemedText>
+                  {project.description && (
+                    <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 4 }}>
+                      {project.description}
+                    </ThemedText>
+                  )}
+                </View>
+                <View style={styles.projectActions}>
+                  <TouchableOpacity onPress={() => handleEdit(project)} style={styles.iconButton}>
+                    <FontAwesome6 name="pen" size={16} color={theme.textMuted} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDelete(project.id)} style={styles.iconButton}>
+                    <FontAwesome6 name="trash" size={16} color={theme.error} />
+                  </TouchableOpacity>
+                </View>
+              </ThemedView>
+            ))
           )}
         </ScrollView>
-      </SafeAreaView>
 
-      {/* Modal */}
-      <Modal visible={modalVisible} transparent animationType="fade">
-        <View style={styles.modalContainer}>
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => setModalVisible(false)}
-          />
-          <View style={[styles.modalContent, { backgroundColor: theme.backgroundDefault }]}>
-            <View style={styles.modalHeader}>
-              <ThemedText variant="h3" color={theme.textPrimary}>
-                {editingProject ? '编辑项目' : '新增项目'}
-              </ThemedText>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <FontAwesome6 name="xmark" size={24} color={theme.textPrimary} />
-              </TouchableOpacity>
-            </View>
+        <Modal visible={modalVisible} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <ThemedView level="default" style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <ThemedText variant="h3" color={theme.textPrimary}>
+                  {editingProject ? '编辑项目' : '新增项目'}
+                </ThemedText>
+                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                  <FontAwesome6 name="xmark" size={20} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.modalBody}>
-              <ThemedView level="root" style={styles.inputContainer}>
-                <ThemedText variant="caption" color={theme.textSecondary} style={styles.inputLabel}>
+              <View style={styles.modalBody}>
+                <ThemedText variant="caption" color={theme.textMuted} style={styles.label}>
                   项目名称
                 </ThemedText>
                 <TextInput
-                  style={[styles.input, { backgroundColor: theme.backgroundRoot, color: theme.textPrimary }]}
-                  placeholder="输入项目名称"
-                  placeholderTextColor={theme.textMuted}
+                  style={[styles.textInput, { color: theme.textPrimary }]}
                   value={projectName}
                   onChangeText={setProjectName}
+                  placeholder="输入项目名称"
+                  placeholderTextColor={theme.textMuted}
                 />
-              </ThemedView>
-            </View>
 
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton, { backgroundColor: theme.border }]}
-                onPress={() => setModalVisible(false)}
-              >
-                <ThemedText variant="bodyMedium" color={theme.textPrimary}>取消</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.saveButton, { backgroundColor: theme.primary }]}
-                onPress={handleSave}
-                disabled={loading}
-              >
-                <ThemedText variant="bodyMedium" color="white">
-                  {loading ? '保存中...' : '保存'}
+                <ThemedText variant="caption" color={theme.textMuted} style={styles.label}>
+                  项目描述（可选）
                 </ThemedText>
-              </TouchableOpacity>
-            </View>
+                <TextInput
+                  style={[styles.textInput, { color: theme.textPrimary }]}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="输入项目描述"
+                  placeholderTextColor={theme.textMuted}
+                  multiline
+                />
+              </View>
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
+                  <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                    取消
+                  </ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.submitButton} onPress={handleSave}>
+                  <ThemedText variant="bodyMedium" color={theme.buttonPrimaryText}>
+                    保存
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+            </ThemedView>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      </View>
     </Screen>
+  );
+}
+
   );
 }
