@@ -20,24 +20,17 @@ import { useTheme } from '@/hooks/useTheme';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { createStyles } from './styles';
 import { Spacing } from '@/constants/theme';
+import { projectService, workerService, workLogService, type Project, type Worker, type WorkLog } from '@/services/LocalStorage';
 
-interface Project {
-  id: string;
-  name: string;
-}
-
-interface Worker {
-  id: string;
-  name: string;
-}
-
-interface WorkLog {
-  id: string;
-  projectId: string;
+interface WorkLogWithWorkers {
+  id: number;
+  projectId: number;
   projectName: string;
-  date: string;
-  description: string;
-  workers: Array<{ id: string; name: string; hours: number }>;
+  workerId: number;
+  workerName: string;
+  workDate: string;
+  hours: number;
+  description?: string;
   createdAt: string;
 }
 
@@ -47,35 +40,26 @@ export default function HomeScreen() {
   const router = useSafeRouter();
 
   // 表单状态
-  const [selectedProject, setSelectedProject] = useState<string>('');
-  const [selectedWorkers, setSelectedWorkers] = useState<Map<string, number>>(new Map());
+  const [selectedProject, setSelectedProject] = useState<number | null>(null);
+  const [selectedWorkers, setSelectedWorkers] = useState<Map<number, number>>(new Map());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [description, setDescription] = useState('');
-  const [editingWorkLog, setEditingWorkLog] = useState<WorkLog | null>(null);
 
   // 数据状态
   const [projects, setProjects] = useState<Project[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
-  const [workLogs, setWorkLogs] = useState<WorkLog[]>([]);
+  const [workLogs, setWorkLogs] = useState<WorkLogWithWorkers[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Modal 状态
   const [showProjectModal, setShowProjectModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-
-  // 编辑表单状态
-  const [editProject, setEditProject] = useState<string>('');
-  const [editWorkers, setEditWorkers] = useState<Map<string, number>>(new Map());
-  const [editDate, setEditDate] = useState<Date>(new Date());
-  const [editDescription, setEditDescription] = useState('');
 
   // 加载项目列表
   const fetchProjects = useCallback(async () => {
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/projects`);
-      const data = await response.json();
-      setProjects(data.projects || []);
+      const data = await projectService.getAll();
+      setProjects(data);
     } catch (error) {
       console.error('获取项目列表失败:', error);
       Alert.alert('错误', '获取项目列表失败');
@@ -85,9 +69,8 @@ export default function HomeScreen() {
   // 加载人员列表
   const fetchWorkers = useCallback(async () => {
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/workers`);
-      const data = await response.json();
-      setWorkers(data.workers || []);
+      const data = await workerService.getAll();
+      setWorkers(data);
     } catch (error) {
       console.error('获取人员列表失败:', error);
       Alert.alert('错误', '获取人员列表失败');
@@ -97,9 +80,8 @@ export default function HomeScreen() {
   // 加载工时记录
   const fetchWorkLogs = useCallback(async () => {
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/work-logs`);
-      const data = await response.json();
-      setWorkLogs(data.workLogs || []);
+      const data = await workLogService.getAll();
+      setWorkLogs(data);
     } catch (error) {
       console.error('获取工时记录失败:', error);
     }
@@ -115,14 +97,14 @@ export default function HomeScreen() {
   );
 
   // 选择项目
-  const handleSelectProject = (projectId: string) => {
+  const handleSelectProject = (projectId: number) => {
     setSelectedProject(projectId);
     setShowProjectModal(false);
   };
 
   // 清空表单
   const handleClearForm = useCallback(() => {
-    setSelectedProject('');
+    setSelectedProject(null);
     setSelectedWorkers(new Map());
     setSelectedDate(new Date());
     setDescription('');
@@ -145,35 +127,33 @@ export default function HomeScreen() {
       return;
     }
 
+    const project = projects.find(p => p.id === selectedProject);
+    if (!project) {
+      Alert.alert('错误', '项目不存在');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const workersArray = Array.from(selectedWorkers.entries()).map(([id, hours]) => ({
-        id,
-        hours,
-      }));
-
-      const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/work-logs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId: selectedProject,
-          date: selectedDate.toISOString().split('T')[0],
-          description,
-          workers: workersArray,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || '提交失败');
+      // 为每个选中的工人创建工时记录
+      for (const [workerId, hours] of selectedWorkers.entries()) {
+        const worker = workers.find(w => w.id === workerId);
+        if (worker) {
+          await workLogService.create({
+            projectId: selectedProject,
+            projectName: project.name,
+            workerId: workerId,
+            workerName: worker.name,
+            workDate: selectedDate.toISOString().split('T')[0],
+            hours: hours,
+            description: description,
+          });
+        }
       }
 
       Alert.alert('成功', '工时记录已添加');
-      // 重置表单
       handleClearForm();
-      // 刷新列表
       fetchWorkLogs();
     } catch (error: any) {
       console.error('提交失败:', error);
@@ -181,10 +161,10 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  }, [selectedProject, selectedWorkers, selectedDate, description, fetchWorkLogs, handleClearForm]);
+  }, [selectedProject, selectedWorkers, selectedDate, description, projects, workers, fetchWorkLogs, handleClearForm]);
 
   // 切换人员选择
-  const toggleWorker = useCallback((workerId: string) => {
+  const toggleWorker = useCallback((workerId: number) => {
     setSelectedWorkers(prev => {
       const newSelected = new Map(prev);
       if (newSelected.has(workerId)) {
@@ -197,102 +177,8 @@ export default function HomeScreen() {
   }, []);
 
   // 切换工时数量（0.5天 <-> 1天）
-  const toggleWorkerHours = useCallback((workerId: string) => {
+  const toggleWorkerHours = useCallback((workerId: number) => {
     setSelectedWorkers(prev => {
-      const newSelected = new Map(prev);
-      const currentHours = newSelected.get(workerId) || 1;
-      newSelected.set(workerId, currentHours === 1 ? 0.5 : 1);
-      return newSelected;
-    });
-  }, []);
-
-  // 编辑工时记录
-  const handleEditWorkLog = useCallback((workLog: WorkLog) => {
-    setEditingWorkLog(workLog);
-    setEditProject(workLog.projectId);
-    setEditWorkers(new Map(workLog.workers.map(w => [w.id, w.hours])));
-    setEditDate(new Date(workLog.date));
-    setEditDescription(workLog.description);
-    setShowEditModal(true);
-  }, []);
-
-  // 保存编辑
-  const handleSaveEdit = useCallback(async () => {
-    if (!editProject) {
-      Alert.alert('提示', '请选择项目');
-      return;
-    }
-
-    if (editWorkers.size === 0) {
-      Alert.alert('提示', '请至少选择一个人员');
-      return;
-    }
-
-    if (!editDescription.trim()) {
-      Alert.alert('提示', '请填写工作内容');
-      return;
-    }
-
-    if (!editingWorkLog) {
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const workersArray = Array.from(editWorkers.entries()).map(([id, hours]) => ({
-        id,
-        hours,
-      }));
-
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/work-logs/${editingWorkLog.id}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            projectId: editProject,
-            date: editDate.toISOString().split('T')[0],
-            description: editDescription,
-            workers: workersArray,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || '保存失败');
-      }
-
-      Alert.alert('成功', '工时记录已更新');
-      setShowEditModal(false);
-      setEditingWorkLog(null);
-      fetchWorkLogs();
-    } catch (error: any) {
-      console.error('保存失败:', error);
-      Alert.alert('错误', error.message || '保存失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [editProject, editWorkers, editDate, editDescription, editingWorkLog, fetchWorkLogs]);
-
-  // 切换编辑表单人员选择
-  const toggleEditWorker = useCallback((workerId: string) => {
-    setEditWorkers(prev => {
-      const newSelected = new Map(prev);
-      if (newSelected.has(workerId)) {
-        newSelected.delete(workerId);
-      } else {
-        newSelected.set(workerId, 1); // 默认1天
-      }
-      return newSelected;
-    });
-  }, []);
-
-  // 切换编辑表单工时数量（0.5天 <-> 1天）
-  const toggleEditWorkerHours = useCallback((workerId: string) => {
-    setEditWorkers(prev => {
       const newSelected = new Map(prev);
       const currentHours = newSelected.get(workerId) || 1;
       newSelected.set(workerId, currentHours === 1 ? 0.5 : 1);
@@ -462,7 +348,7 @@ export default function HomeScreen() {
                       {workLog.projectName}
                     </ThemedText>
                     <ThemedText variant="caption" color={theme.textMuted}>
-                      {workLog.date}
+                      {workLog.workDate}
                     </ThemedText>
                   </View>
                   <ThemedText variant="body" color={theme.textSecondary} style={styles.workLogDesc}>
@@ -470,17 +356,12 @@ export default function HomeScreen() {
                   </ThemedText>
                   <View style={styles.workLogFooter}>
                     <View style={styles.workersTags}>
-                      {workLog.workers.map(worker => (
-                        <View key={worker.id} style={styles.workerTag}>
-                          <ThemedText variant="caption" color={theme.textSecondary}>
-                            {worker.name} ({worker.hours}天)
-                          </ThemedText>
-                        </View>
-                      ))}
+                      <View style={styles.workerTag}>
+                        <ThemedText variant="caption" color={theme.textSecondary}>
+                          {workLog.workerName} ({workLog.hours}天)
+                        </ThemedText>
+                      </View>
                     </View>
-                    <TouchableOpacity onPress={() => handleEditWorkLog(workLog)}>
-                      <FontAwesome6 name="pen" size={16} color={theme.textMuted} />
-                    </TouchableOpacity>
                   </View>
                 </ThemedView>
               ))
@@ -543,141 +424,6 @@ export default function HomeScreen() {
               <FontAwesome6 name="plus" size={16} color={theme.primary} />
               <ThemedText variant="body" color={theme.primary} style={{ marginLeft: Spacing.sm }}>
                 添加新项目
-              </ThemedText>
-            </TouchableOpacity>
-          </ThemedView>
-        </View>
-      </Modal>
-
-      {/* 编辑 Modal */}
-      <Modal visible={showEditModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <ThemedView level="default" style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <ThemedText variant="h3" color={theme.textPrimary}>
-                编辑工时记录
-              </ThemedText>
-              <TouchableOpacity onPress={() => setShowEditModal(false)}>
-                <FontAwesome6 name="xmark" size={20} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              {/* 项目选择 */}
-              <View style={styles.editFormSection}>
-                <ThemedText variant="caption" color={theme.textMuted} style={styles.label}>
-                  项目
-                </ThemedText>
-                <ScrollView style={styles.editProjectList} nestedScrollEnabled>
-                  {projects.map(project => (
-                    <TouchableOpacity
-                      key={project.id}
-                      style={[
-                        styles.editProjectItem,
-                        editProject === project.id && styles.editProjectItemSelected,
-                      ]}
-                      onPress={() => setEditProject(project.id)}
-                    >
-                      <ThemedText
-                        variant="body"
-                        color={editProject === project.id ? theme.buttonPrimaryText : theme.textPrimary}
-                      >
-                        {project.name}
-                      </ThemedText>
-                      {editProject === project.id && (
-                        <FontAwesome6 name="check" size={16} color={theme.buttonPrimaryText} />
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
-              {/* 人员选择 */}
-              <View style={styles.editFormSection}>
-                <ThemedText variant="caption" color={theme.textMuted} style={styles.label}>
-                  人员（点击切换工时）
-                </ThemedText>
-                <View style={styles.editWorkersGrid}>
-                  {workers.map(worker => {
-                    const isSelected = editWorkers.has(worker.id);
-                    const hours = editWorkers.get(worker.id) || 1;
-                    return (
-                      <TouchableOpacity
-                        key={worker.id}
-                        style={[
-                          styles.workerChip,
-                          isSelected && styles.workerChipSelected,
-                        ]}
-                        onPress={() => {
-                          if (isSelected) {
-                            toggleEditWorkerHours(worker.id);
-                          } else {
-                            toggleEditWorker(worker.id);
-                          }
-                        }}
-                      >
-                        <ThemedText
-                          variant="caption"
-                          color={isSelected ? theme.buttonPrimaryText : theme.textPrimary}
-                        >
-                          {worker.name}
-                        </ThemedText>
-                        {isSelected && (
-                          <ThemedText
-                            variant="caption"
-                            color={theme.buttonPrimaryText}
-                            style={{ marginLeft: 4 }}
-                          >
-                            ({hours}天)
-                          </ThemedText>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {/* 日期选择 */}
-              <View style={styles.editFormSection}>
-                <ThemedText variant="caption" color={theme.textMuted} style={styles.label}>
-                  日期
-                </ThemedText>
-                <TouchableOpacity
-                  style={styles.dateSelector}
-                  onPress={() => setShowDatePicker(true)}
-                >
-                  <FontAwesome6 name="calendar" size={20} color={theme.textPrimary} />
-                  <ThemedText variant="body" color={theme.textPrimary}>
-                    {editDate.toLocaleDateString('zh-CN')}
-                  </ThemedText>
-                </TouchableOpacity>
-              </View>
-
-              {/* 工作内容 */}
-              <View style={styles.editFormSection}>
-                <ThemedText variant="caption" color={theme.textMuted} style={styles.label}>
-                  工作内容
-                </ThemedText>
-                <TextInput
-                  style={[styles.textInput, { color: theme.textPrimary }]}
-                  placeholder="工作内容"
-                  placeholderTextColor={theme.textMuted}
-                  value={editDescription}
-                  onChangeText={setEditDescription}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                />
-              </View>
-            </ScrollView>
-
-            <TouchableOpacity
-              style={[styles.modalSaveButton, loading && styles.submitButtonDisabled]}
-              onPress={handleSaveEdit}
-              disabled={loading}
-            >
-              <ThemedText variant="bodyMedium" color={loading ? theme.textMuted : theme.buttonPrimaryText}>
-                {loading ? '保存中...' : '保存'}
               </ThemedText>
             </TouchableOpacity>
           </ThemedView>
