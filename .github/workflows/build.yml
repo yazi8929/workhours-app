@@ -1,5 +1,6 @@
-name: Build
-on: [push]
+name: Build Expo APK
+on:
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -8,124 +9,32 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-      - name: Init React Native project
-        run: npx @react-native-community/cli init WorkHoursApp --skip-install
-      - name: Install dependencies
+      - name: Install pnpm
+        run: npm install -g pnpm
+      - name: Install root dependencies
+        run: pnpm install
+      - name: Install server dependencies
         run: |
-          cd WorkHoursApp
-          npm install
-          npm install @react-navigation/native @react-navigation/native-stack react-native-screens react-native-safe-area-context
-      - name: Create app files
+          cd server
+          pnpm install
+      - name: Install client dependencies
         run: |
-          cd WorkHoursApp
-          
-          mkdir -p src/screens
-          cat > src/screens/HomeScreen.tsx << 'EOF'
-          import React from 'react';
-          import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-
-          export default function HomeScreen() {
-            return (
-              <View style={styles.container}>
-                <View style={styles.header}>
-                  <Text style={styles.title}>工时统计</Text>
-                </View>
-                <ScrollView style={styles.content}>
-                  <View style={styles.card}>
-                    <Text style={styles.cardTitle}>今日工时</Text>
-                    <Text style={styles.cardValue}>8 人</Text>
-                  </View>
-                  <View style={styles.card}>
-                    <Text style={styles.cardTitle}>本月工作日</Text>
-                    <Text style={styles.cardValue}>120 天</Text>
-                  </View>
-                  <View style={styles.card}>
-                    <Text style={styles.cardTitle}>本周记录</Text>
-                    <Text style={styles.cardValue}>15 条</Text>
-                  </View>
-                  
-                  <Text style={styles.sectionTitle}>最近记录</Text>
-                  <View style={styles.logItem}>
-                    <Text style={styles.logDate}>2026-03-01</Text>
-                    <Text style={styles.logProject}>项目A</Text>
-                    <Text style={styles.logWorkers}>张三, 李四</Text>
-                    <Text style={styles.logHours}>2天</Text>
-                  </View>
-                  <View style={styles.logItem}>
-                    <Text style={styles.logDate}>2026-03-02</Text>
-                    <Text style={styles.logProject}>项目B</Text>
-                    <Text style={styles.logWorkers}>王五</Text>
-                    <Text style={styles.logHours}>1天</Text>
-                  </View>
-                </ScrollView>
-                <TouchableOpacity style={styles.addButton}>
-                  <Text style={styles.addButtonText}>+ 记录工时</Text>
-                </TouchableOpacity>
-              </View>
-            );
-          }
-
-          const styles = StyleSheet.create({
-            container: { flex: 1, backgroundColor: '#f5f5f5' },
-            header: { backgroundColor: '#4F46E5', padding: 20, paddingTop: 40 },
-            title: { color: '#fff', fontSize: 24, fontWeight: 'bold', textAlign: 'center' },
-            content: { flex: 1, padding: 20 },
-            card: { backgroundColor: '#fff', padding: 20, borderRadius: 10, marginBottom: 15, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-            cardTitle: { fontSize: 14, color: '#666', marginBottom: 5 },
-            cardValue: { fontSize: 32, fontWeight: 'bold', color: '#4F46E5' },
-            sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginTop: 10, marginBottom: 10 },
-            logItem: { backgroundColor: '#fff', padding: 15, borderRadius: 10, marginBottom: 10, elevation: 1 },
-            logDate: { fontSize: 12, color: '#999', marginBottom: 5 },
-            logProject: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 5 },
-            logWorkers: { fontSize: 14, color: '#666', marginBottom: 3 },
-            logHours: { fontSize: 14, color: '#4F46E5', fontWeight: 'bold' },
-            addButton: { backgroundColor: '#4F46E5', padding: 20, alignItems: 'center' },
-            addButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-          });
-          EOF
-
-          mkdir -p src/navigation
-          cat > src/navigation/AppNavigator.tsx << 'EOF'
-          import React from 'react';
-          import { NavigationContainer } from '@react-navigation/native';
-          import { createNativeStackNavigator } from '@react-navigation/native-stack';
-          import HomeScreen from '../screens/HomeScreen';
-
-          const Stack = createNativeStackNavigator();
-
-          export default function AppNavigator() {
-            return (
-              <NavigationContainer>
-                <Stack.Navigator>
-                  <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
-                </Stack.Navigator>
-              </NavigationContainer>
-            );
-          }
-          EOF
-
-          cat > App.tsx << 'EOF'
-          import React from 'react';
-          import AppNavigator from './src/navigation/AppNavigator';
-          export default function App() {
-            return <AppNavigator />;
-          }
-          EOF
-      - name: Build Release APK
+          cd client
+          npm install --legacy-peer-deps
+      - name: Build Expo APK
         run: |
-          cd WorkHoursApp/android
+          cd client
+          npx expo prebuild --platform android --clean
+          cd android
           chmod +x gradlew
           ./gradlew assembleRelease
       - name: Find APK
-        run: find WorkHoursApp -name "*.apk" -type f
-      - name: Upload Release APK
+        run: find client/android/app/build/outputs/apk/release -name "*.apk" -type f
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: WorkHoursApp/android/app/build/outputs/apk/release/app-release.apk
+          name: workhours-app-release
+          path: client/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+          retention-days: 30
 
