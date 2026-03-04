@@ -2,21 +2,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ========== 类型定义 ==========
 
-export interface Project {
+interface Project {
   id: number;
   name: string;
   description?: string;
   createdAt: string;
 }
 
-export interface Worker {
+interface Worker {
   id: number;
   name: string;
   role?: string;
   createdAt: string;
 }
 
-export interface WorkLog {
+interface WorkLog {
   id: number;
   projectId: number;
   projectName: string;
@@ -28,7 +28,7 @@ export interface WorkLog {
   createdAt: string;
 }
 
-export interface WorkerHours {
+interface WorkerHours {
   workerId: number;
   workerName: string;
   totalHours: number;
@@ -69,7 +69,7 @@ function generateId(items: { id: number }[]): number {
 
 // ========== 项目服务 ==========
 
-export const projectService = {
+const projectService = {
   getAll: async (): Promise<Project[]> => {
     return getAll<Project>(STORAGE_KEYS.PROJECTS);
   },
@@ -112,7 +112,7 @@ export const projectService = {
 
 // ========== 人员服务 ==========
 
-export const workerService = {
+const workerService = {
   getAll: async (): Promise<Worker[]> => {
     return getAll<Worker>(STORAGE_KEYS.WORKERS);
   },
@@ -155,7 +155,7 @@ export const workerService = {
 
 // ========== 工时记录服务 ==========
 
-export const workLogService = {
+const workLogService = {
   getAll: async (): Promise<WorkLog[]> => {
     return getAll<WorkLog>(STORAGE_KEYS.WORK_LOGS);
   },
@@ -227,8 +227,15 @@ export const workLogService = {
         });
       }
     });
+
+    return Array.from(workerMap.values()).sort((a, b) => b.totalHours - a.totalHours);
+  },
+};
+
+// ========== 数据导出/导入 ==========
+
 // 导出所有数据
-async function exportAllData() {
+async function exportAllData(): Promise<string> {
   try {
     const projects = await projectService.getAll();
     const workers = await workerService.getAll();
@@ -284,8 +291,18 @@ async function importAllData(jsonString: string) {
   }
 }
 
-// 将函数添加到 config 对象中
-config.exportAllData = exportAllData;
-config.importAllData = importAllData;
+// ========== 导出 ==========
 
-module.exports = config;
+module.exports = {
+  projectService,
+  workerService,
+  workLogService,
+  exportAllData,
+  importAllData,
+};
+
+// 类型导出（用于 TypeScript 类型提示）
+module.exports.Project = Project;
+module.exports.Worker = Worker;
+module.exports.WorkLog = WorkLog;
+module.exports.WorkerHours = WorkerHours;
