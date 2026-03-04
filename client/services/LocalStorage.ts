@@ -227,6 +227,62 @@ export const workLogService = {
         });
       }
     });
+// 导出所有数据
+export async function exportAllData() {
+  try {
+    const projects = await projectService.getAll();
+    const workers = await workerService.getAll();
+    const workLogs = await workLogService.getAll();
+
+    const exportData = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      data: {
+        projects,
+        workers,
+        workLogs,
+      },
+    };
+
+    return JSON.stringify(exportData, null, 2);
+  } catch (error) {
+    console.error('导出数据失败:', error);
+    throw error;
+  }
+}
+
+// 导入所有数据
+export async function importAllData(jsonString: string) {
+  try {
+    const importData = JSON.parse(jsonString);
+
+    // 验证数据格式
+    if (!importData.data || !importData.data.projects || !importData.data.workers || !importData.data.workLogs) {
+      throw new Error('数据格式不正确');
+    }
+
+    // 清空旧数据
+    await AsyncStorage.multiRemove([
+      STORAGE_KEYS.PROJECTS,
+      STORAGE_KEYS.WORKERS,
+      STORAGE_KEYS.WORK_LOGS,
+    ]);
+
+    // 导入新数据
+    await saveAll(STORAGE_KEYS.PROJECTS, importData.data.projects);
+    await saveAll(STORAGE_KEYS.WORKERS, importData.data.workers);
+    await saveAll(STORAGE_KEYS.WORK_LOGS, importData.data.workLogs);
+
+    return {
+      projectsCount: importData.data.projects.length,
+      workersCount: importData.data.workers.length,
+      workLogsCount: importData.data.workLogs.length,
+    };
+  } catch (error) {
+    console.error('导入数据失败:', error);
+    throw error;
+  }
+}
 
     return Array.from(workerMap.values()).sort((a, b) => b.totalHours - a.totalHours);
   },
