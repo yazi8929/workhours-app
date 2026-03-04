@@ -283,8 +283,9 @@ async function importAllData(jsonString: string) {
     throw error;
   }
 }
-// 导出函数
-module.exports.exportAllData = exportAllData;
-module.exports.importAllData = importAllData;
+
+// 将函数添加到 config 对象中
+config.exportAllData = exportAllData;
+config.importAllData = importAllData;
 
 module.exports = config;
