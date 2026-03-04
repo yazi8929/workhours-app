@@ -228,7 +228,7 @@ export const workLogService = {
       }
     });
 // 导出所有数据
-export async function exportAllData() {
+async function exportAllData() {
   try {
     const projects = await projectService.getAll();
     const workers = await workerService.getAll();
@@ -252,7 +252,7 @@ export async function exportAllData() {
 }
 
 // 导入所有数据
-export async function importAllData(jsonString: string) {
+async function importAllData(jsonString: string) {
   try {
     const importData = JSON.parse(jsonString);
 
@@ -283,8 +283,8 @@ export async function importAllData(jsonString: string) {
     throw error;
   }
 }
+// 导出函数
+module.exports.exportAllData = exportAllData;
+module.exports.importAllData = importAllData;
 
-    return Array.from(workerMap.values()).sort((a, b) => b.totalHours - a.totalHours);
-  },
-};
-
+module.exports = config;
