@@ -52,15 +52,17 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="stats"
-        options={{
-          title: '统计',
-          tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="chart-bar" size={20} color={color} />
-          ),
-        }}
-      />
+    // 暂时注释掉统计页面
+{/* <Tabs.Screen
+  name="stats"
+  options={{
+    title: '统计',
+    tabBarIcon: ({ color }) => (
+      <FontAwesome6 name="chart-simple" size={20} color={color} />
+    ),
+  }}
+/> */}
+
     </Tabs>
   );
 }
