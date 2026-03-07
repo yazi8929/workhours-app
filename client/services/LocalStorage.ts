@@ -34,6 +34,12 @@ interface WorkerHours {
   totalHours: number;
 }
 
+interface ProjectHours {
+  projectId: number;
+  projectName: string;
+  totalHours: number;
+}
+
 // ========== Storage Keys ==========
 
 const STORAGE_KEYS = {
@@ -205,7 +211,7 @@ const workLogService = {
     return true;
   },
 
-  // 获取月度统计
+  // 获取月度统计（按人员）
   getMonthlyStats: async (year: number, month: number): Promise<WorkerHours[]> => {
     const logs = await workLogService.getAll();
     const filteredLogs = logs.filter(log => {
@@ -229,6 +235,32 @@ const workLogService = {
     });
 
     return Array.from(workerMap.values()).sort((a, b) => b.totalHours - a.totalHours);
+  },
+
+  // 获取项目月度统计
+  getProjectStats: async (year: number, month: number): Promise<ProjectHours[]> => {
+    const logs = await workLogService.getAll();
+    const filteredLogs = logs.filter(log => {
+      const logDate = new Date(log.workDate);
+      return logDate.getFullYear() === year && logDate.getMonth() === month;
+    });
+
+    const projectMap = new Map<number, ProjectHours>();
+
+    filteredLogs.forEach(log => {
+      const existing = projectMap.get(log.projectId);
+      if (existing) {
+        existing.totalHours += log.hours;
+      } else {
+        projectMap.set(log.projectId, {
+          projectId: log.projectId,
+          projectName: log.projectName,
+          totalHours: log.hours,
+        });
+      }
+    });
+
+    return Array.from(projectMap.values()).sort((a, b) => b.totalHours - a.totalHours);
   },
 };
 
@@ -300,5 +332,3 @@ module.exports = {
   exportAllData,
   importAllData,
 };
-
-
