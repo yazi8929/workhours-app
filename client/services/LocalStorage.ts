@@ -301,8 +301,4 @@ module.exports = {
   importAllData,
 };
 
-// 类型导出（用于 TypeScript 类型提示）
-module.exports.Project = Project;
-module.exports.Worker = Worker;
-module.exports.WorkLog = WorkLog;
-module.exports.WorkerHours = WorkerHours;
+
