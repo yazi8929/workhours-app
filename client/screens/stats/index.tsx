@@ -5,8 +5,6 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
-  TouchableWithoutFeedback,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -139,6 +137,12 @@ export default function StatsScreen() {
                 style={[styles.modeButton, statsMode === 'worker' && styles.modeButtonActive]}
                 onPress={() => setStatsMode('worker')}
               >
+                <FontAwesome6 
+                  name="user" 
+                  size={16} 
+                  color={statsMode === 'worker' ? theme.buttonPrimaryText : theme.textSecondary}
+                  style={{ marginRight: 6 }}
+                />
                 <ThemedText
                   variant="caption"
                   color={statsMode === 'worker' ? theme.buttonPrimaryText : theme.textSecondary}
@@ -150,6 +154,12 @@ export default function StatsScreen() {
                 style={[styles.modeButton, statsMode === 'project' && styles.modeButtonActive]}
                 onPress={() => setStatsMode('project')}
               >
+                <FontAwesome6 
+                  name="folder" 
+                  size={16} 
+                  color={statsMode === 'project' ? theme.buttonPrimaryText : theme.textSecondary}
+                  style={{ marginRight: 6 }}
+                />
                 <ThemedText
                   variant="caption"
                   color={statsMode === 'project' ? theme.buttonPrimaryText : theme.textSecondary}
