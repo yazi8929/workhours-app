@@ -1,132 +1,148 @@
 import { StyleSheet } from 'react-native';
-import { Spacing, BorderRadius, Theme } from '@/constants/theme';
+import { Theme } from '@/hooks/useTheme';
 
-export const createStyles = (theme: Theme) => {
-  return StyleSheet.create({
+export const createStyles = (theme: Theme) => 
+  StyleSheet.create({
     container: {
       flex: 1,
-      padding: Spacing.lg,
-      gap: Spacing.lg,
+      backgroundColor: theme.backgroundRoot,
     },
-    headerCard: {
-      padding: Spacing.xl,
-      borderRadius: BorderRadius.lg,
-      gap: Spacing.lg,
-    },
-    headerTitleRow: {
+    
+    // Header
+    header: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      alignItems: 'center',
+      alignItems: 'flex-start',
+      padding: 16,
+      gap: 12,
     },
-    exportButton: {
+    
+    // 模式切换
+    modeSwitch: {
+      flexDirection: 'row',
+      backgroundColor: theme.backgroundSecondary,
+      borderRadius: 8,
+      padding: 4,
+      marginTop: 12,
+    },
+    
+    modeButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: Spacing.xs,
-      paddingHorizontal: Spacing.md,
-      paddingVertical: Spacing.sm,
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 6,
+      gap: 6,
+    },
+    
+    modeButtonActive: {
       backgroundColor: theme.primary,
-      borderRadius: BorderRadius.sm,
     },
-    exportButtonText: {
-      fontSize: 12,
+    
+    // Header Actions
+    headerActions: {
+      flexDirection: 'column',
+      gap: 12,
+      alignItems: 'flex-end',
     },
-    monthSelector: {
+    
+    iconButton: {
+      padding: 8,
+    },
+    
+    dateButton: {
       flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.backgroundSecondary,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+    },
+    
+    // List
+    list: {
+      flex: 1,
+      padding: 16,
+    },
+    
+    // Empty State
+    emptyState: {
+      flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      gap: Spacing.xl,
+      paddingVertical: 48,
     },
-    tabContainer: {
-      flexDirection: 'row',
-      backgroundColor: theme.backgroundDefault,
-      borderRadius: BorderRadius.md,
-      padding: Spacing.xs,
-    },
-    tab: {
-      flex: 1,
-      paddingVertical: Spacing.sm,
-      alignItems: 'center',
-      borderRadius: BorderRadius.sm,
-    },
-    tabActive: {
-      backgroundColor: theme.primary,
-    },
-    listContent: {
-      gap: Spacing.md,
-      paddingBottom: Spacing.xl,
-    },
-    emptyState: {
-      padding: Spacing['3xl'],
-      alignItems: 'center',
-      borderRadius: BorderRadius.md,
-    },
+    
+    // Total Card
     totalCard: {
-      padding: Spacing.lg,
-      borderRadius: BorderRadius.md,
-      alignItems: 'center',
-      gap: Spacing.xs,
-    },
-    statCard: {
-      padding: Spacing.lg,
-      borderRadius: BorderRadius.md,
-    },
-    statContent: {
-      flex: 1,
-      gap: Spacing.sm,
-    },
-    statNameRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
+      padding: 16,
+      marginBottom: 16,
+      borderRadius: 12,
     },
-    workersDetail: {
-      gap: Spacing.xs,
-    },
-    workerRow: {
+    
+    // Stat Card
+    statCard: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: Spacing.xs,
+      padding: 16,
+      marginBottom: 12,
+      borderRadius: 12,
     },
-    workerName: {
+    
+    statRank: {
+      width: 40,
+      alignItems: 'center',
+    },
+    
+    statInfo: {
       flex: 1,
+      marginLeft: 12,
     },
-    workRecordsDetail: {
-      gap: Spacing.xs,
-      marginTop: Spacing.xs,
+    
+    // Modal
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
     },
-    workRecordRow: {
-      backgroundColor: theme.backgroundTertiary,
-      padding: Spacing.sm,
-      borderRadius: BorderRadius.sm,
-      gap: Spacing.xs,
+    
+    modalContent: {
+      width: '100%',
+      maxWidth: 400,
+      borderRadius: 16,
+      overflow: 'hidden',
     },
-    workRecordHeader: {
+    
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    
+    modalBody: {
+      padding: 16,
+    },
+    
+    dataAction: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: Spacing.xs,
+      padding: 16,
+      marginBottom: 12,
+      backgroundColor: theme.backgroundSecondary,
+      borderRadius: 12,
     },
-    recordDate: {
+    
+    dataActionText: {
+      marginLeft: 12,
       flex: 1,
-    },
-    workRecordProject: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: Spacing.xs,
-    },
-    recordProjectName: {
-      flex: 1,
-    },
-    recordDesc: {
-      lineHeight: 16,
-      marginTop: Spacing.xs,
-    },
-    moreText: {
-      marginTop: Spacing.xs,
-      fontStyle: 'italic',
-    },
-    statHours: {
-      alignItems: 'flex-end',
-      gap: Spacing.xs,
     },
   });
-};
