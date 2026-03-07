@@ -20,10 +20,34 @@ import { useTheme } from '@/hooks/useTheme';
 import { createStyles } from './styles';
 import { workLogService, exportAllData, importAllData, type WorkerHours } from '@/services/LocalStorage';
 
-interface ProjectHours {
-  projectId: number;
+interface WorkerRecord {
+  date: string;
+  projectId: string;
+  projectName: string;
+  description: string;
+  hours: number;
+}
+
+interface WorkerStatsWithDetails {
+  workerId: string;
+  workerName: string;
+  totalHours: number;
+  records: WorkerRecord[];
+}
+
+interface ProjectRecord {
+  date: string;
+  workerId: string;
+  workerName: string;
+  description: string;
+  hours: number;
+}
+
+interface ProjectStatsWithDetails {
+  projectId: string;
   projectName: string;
   totalHours: number;
+  records: ProjectRecord[];
 }
 
 export default function StatsScreen() {
@@ -33,22 +57,84 @@ export default function StatsScreen() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [statsMode, setStatsMode] = useState<'worker' | 'project'>('worker');
-  const [workerStats, setWorkerStats] = useState<WorkerHours[]>([]);
-  const [projectStats, setProjectStats] = useState<ProjectHours[]>([]);
+  const [workerStats, setWorkerStats] = useState<WorkerStatsWithDetails[]>([]);
+  const [projectStats, setProjectStats] = useState<ProjectStatsWithDetails[]>([]);
   const [showDataModal, setShowDataModal] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   const fetchStats = useCallback(async () => {
     try {
       const year = selectedDate.getFullYear();
       const month = selectedDate.getMonth();
       
-      // 获取按人员统计
+      // 获取按人员详细统计
       const workers = await workLogService.getMonthlyStats(year, month);
-      setWorkerStats(workers);
+      
+      // 获取所有工时记录
+      const allLogs = await workLogService.getAllWorkLogs();
+      
+      // 筛选指定月份的记录
+      const monthlyLogs = allLogs.filter(log => {
+        const logDate = new Date(log.date);
+        return logDate.getFullYear() === year && logDate.getMonth() === month;
+      });
+      
+      // 按人员分组详细记录
+      const workerMap = new Map<string, WorkerStatsWithDetails>();
+      
+      workers.forEach(worker => {
+        const workerRecords = monthlyLogs
+          .filter(log => log.workers.some(w => w.id === worker.workerId))
+          .flatMap(log => 
+            log.workers
+              .filter(w => w.id === worker.workerId)
+              .map(w => ({
+                date: log.date,
+                projectId: log.projectId,
+                projectName: log.projectName,
+                description: log.description,
+                hours: w.hours,
+              }))
+          );
+        
+        workerMap.set(worker.workerId, {
+          workerId: worker.workerId,
+          workerName: worker.workerName,
+          totalHours: worker.totalHours,
+          records: workerRecords,
+        });
+      });
+      
+      setWorkerStats(Array.from(workerMap.values()).sort((a, b) => b.totalHours - a.totalHours));
 
-      // 获取按项目统计
+      // 获取按项目详细统计
       const projects = await workLogService.getProjectStats(year, month);
-      setProjectStats(projects);
+      
+      // 按项目分组详细记录
+      const projectMap = new Map<string, ProjectStatsWithDetails>();
+      
+      projects.forEach(project => {
+        const projectRecords = monthlyLogs
+          .filter(log => log.projectId === project.projectId)
+          .flatMap(log => 
+            log.workers.map(w => ({
+              date: log.date,
+              workerId: w.id,
+              workerName: w.name,
+              description: log.description,
+              hours: w.hours,
+            }))
+          );
+        
+        projectMap.set(project.projectId, {
+          projectId: project.projectId,
+          projectName: project.projectName,
+          totalHours: project.totalHours,
+          records: projectRecords,
+        });
+      });
+      
+      setProjectStats(Array.from(projectMap.values()).sort((a, b) => b.totalHours - a.totalHours));
     } catch (error) {
       console.error('获取统计数据失败:', error);
       Alert.alert('错误', '获取统计数据失败');
@@ -63,6 +149,18 @@ export default function StatsScreen() {
 
   const handleDateChange = (date: Date) => {
     setSelectedDate(date);
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
   };
 
   const handleExportData = async () => {
@@ -198,31 +296,114 @@ export default function StatsScreen() {
                   {statsMode === 'worker' ? '人员总计' : '项目总计'}
                 </ThemedText>
                 <ThemedText variant="h2" color={theme.primary}>
-                  {totalHours.toFixed(1)}天
+                  {totalHours.toFixed(2)} 工作日
                 </ThemedText>
               </ThemedView>
 
               {/* 列表 */}
-              {currentStats.map((item, index) => (
-                <ThemedView key={item.projectId || item.workerId} level="default" style={styles.statCard}>
-                  <View style={styles.statRank}>
-                    <ThemedText variant="h3" color={theme.buttonPrimaryText}>
-                      #{index + 1}
-                    </ThemedText>
-                  </View>
-                  <View style={styles.statInfo}>
-                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-                      {item.projectName || (item as WorkerHours).workerName}
-                    </ThemedText>
-                    <ThemedText variant="caption" color={theme.textMuted}>
-                      总工时
-                    </ThemedText>
-                  </View>
-                  <ThemedText variant="h2" color={theme.primary}>
-                    {item.totalHours.toFixed(1)}天
-                  </ThemedText>
-                </ThemedView>
-              ))}
+              {statsMode === 'worker' ? (
+                workerStats.map(item => (
+                  <ThemedView key={item.workerId} level="default" style={styles.statsGroup}>
+                    <TouchableOpacity
+                      style={styles.statsHeader}
+                      onPress={() => toggleExpand(item.workerId)}
+                    >
+                      <View style={styles.statsHeaderLeft}>
+                        <ThemedText variant="h3" color={theme.textPrimary}>
+                          {item.workerName}
+                        </ThemedText>
+                        <ThemedText variant="caption" color={theme.textMuted}>
+                          共 {item.records.length} 条记录
+                        </ThemedText>
+                      </View>
+                      <View style={styles.statsHeaderRight}>
+                        <ThemedText variant="h2" color={theme.primary}>
+                          {item.totalHours.toFixed(2)} 工作日
+                        </ThemedText>
+                        <FontAwesome6
+                          name={expandedItems.has(item.workerId) ? 'chevron-up' : 'chevron-down'}
+                          size={16}
+                          color={theme.textMuted}
+                        />
+                      </View>
+                    </TouchableOpacity>
+
+                    {expandedItems.has(item.workerId) && (
+                      <View style={styles.statsDetails}>
+                        {item.records.map((record, index) => (
+                          <View key={`${record.date}-${index}`} style={styles.recordItem}>
+                            <View style={styles.recordLeft}>
+                              <ThemedText variant="caption" color={theme.textMuted}>
+                                {record.date}
+                              </ThemedText>
+                              <ThemedText variant="bodySmall" color={theme.textPrimary}>
+                                {record.projectName}
+                              </ThemedText>
+                              <ThemedText variant="bodySmall" color={theme.textSecondary} style={styles.recordDesc}>
+                                {record.description}
+                              </ThemedText>
+                            </View>
+                            <ThemedText variant="bodyMedium" color={theme.primary}>
+                              {record.hours} 天
+                            </ThemedText>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </ThemedView>
+                ))
+              ) : (
+                projectStats.map(item => (
+                  <ThemedView key={item.projectId} level="default" style={styles.statsGroup}>
+                    <TouchableOpacity
+                      style={styles.statsHeader}
+                      onPress={() => toggleExpand(item.projectId)}
+                    >
+                      <View style={styles.statsHeaderLeft}>
+                        <ThemedText variant="h3" color={theme.textPrimary}>
+                          {item.projectName}
+                        </ThemedText>
+                        <ThemedText variant="caption" color={theme.textMuted}>
+                          共 {item.records.length} 条记录
+                        </ThemedText>
+                      </View>
+                      <View style={styles.statsHeaderRight}>
+                        <ThemedText variant="h2" color={theme.primary}>
+                          {item.totalHours.toFixed(2)} 工作日
+                        </ThemedText>
+                        <FontAwesome6
+                          name={expandedItems.has(item.projectId) ? 'chevron-up' : 'chevron-down'}
+                          size={16}
+                          color={theme.textMuted}
+                        />
+                      </View>
+                    </TouchableOpacity>
+
+                    {expandedItems.has(item.projectId) && (
+                      <View style={styles.statsDetails}>
+                        {item.records.map((record, index) => (
+                          <View key={`${record.date}-${index}`} style={styles.recordItem}>
+                            <View style={styles.recordLeft}>
+                              <ThemedText variant="caption" color={theme.textMuted}>
+                                {record.date}
+                              </ThemedText>
+                              <ThemedText variant="bodySmall" color={theme.textPrimary}>
+                                {record.workerName}
+                              </ThemedText>
+                              <ThemedText variant="bodySmall" color={theme.textSecondary} style={styles.recordDesc}>
+                                {record.description}
+                              </ThemedText>
+                            </View>
+                            <ThemedText variant="bodyMedium" color={theme.primary}>
+                              {record.hours} 天
+                            </ThemedText>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </ThemedView>
+                ))
+              )}
             </>
           )}
         </ScrollView>
