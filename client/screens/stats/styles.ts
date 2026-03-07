@@ -84,23 +84,59 @@ export const createStyles = (theme: Theme) =>
       borderRadius: 12,
     },
     
-    // Stat Card
-    statCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: 16,
+    // 统计分组卡片
+    statsGroup: {
       marginBottom: 12,
       borderRadius: 12,
+      overflow: 'hidden',
     },
     
-    statRank: {
-      width: 40,
+    // 统计头部（可点击）
+    statsHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
       alignItems: 'center',
+      padding: 16,
+      backgroundColor: theme.backgroundSecondary,
     },
     
-    statInfo: {
+    statsHeaderLeft: {
       flex: 1,
-      marginLeft: 12,
+      gap: 4,
+    },
+    
+    statsHeaderRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    
+    // 详细记录区域
+    statsDetails: {
+      padding: 12,
+      gap: 12,
+      backgroundColor: theme.backgroundRoot,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+    
+    // 单条记录
+    recordItem: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      paddingVertical: 8,
+      gap: 12,
+    },
+    
+    recordLeft: {
+      flex: 1,
+      gap: 4,
+    },
+    
+    recordDesc: {
+      marginTop: 4,
+      lineHeight: 18,
     },
     
     // Modal
