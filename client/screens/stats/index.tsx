@@ -5,6 +5,9 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -46,28 +49,7 @@ export default function StatsScreen() {
       setWorkerStats(workers);
 
       // 获取按项目统计
-      const logs = await workLogService.getAll();
-      const filteredLogs = logs.filter(log => {
-        const logDate = new Date(log.workDate);
-        return logDate.getFullYear() === year && logDate.getMonth() === month;
-      });
-
-      const projectMap = new Map<number, ProjectHours>();
-
-      filteredLogs.forEach(log => {
-        const existing = projectMap.get(log.projectId);
-        if (existing) {
-          existing.totalHours += log.hours;
-        } else {
-          projectMap.set(log.projectId, {
-            projectId: log.projectId,
-            projectName: log.projectName,
-            totalHours: log.hours,
-          });
-        }
-      });
-
-      const projects = Array.from(projectMap.values()).sort((a, b) => b.totalHours - a.totalHours);
+      const projects = await workLogService.getProjectStats(year, month);
       setProjectStats(projects);
     } catch (error) {
       console.error('获取统计数据失败:', error);
@@ -142,6 +124,7 @@ export default function StatsScreen() {
   };
 
   const currentStats = statsMode === 'worker' ? workerStats : projectStats;
+  const totalHours = currentStats.reduce((sum, item) => sum + item.totalHours, 0);
 
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
@@ -198,26 +181,39 @@ export default function StatsScreen() {
               </ThemedText>
             </ThemedView>
           ) : (
-            currentStats.map((item, index) => (
-              <ThemedView key={item.projectId || item.workerId} level="default" style={styles.statCard}>
-                <View style={styles.statRank}>
-                  <ThemedText variant="h3" color={theme.buttonPrimaryText}>
-                    #{index + 1}
-                  </ThemedText>
-                </View>
-                <View style={styles.statInfo}>
-                  <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-                    {item.projectName || (item as WorkerHours).workerName}
-                  </ThemedText>
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    总工时
-                  </ThemedText>
-                </View>
+            <>
+              {/* 总计 */}
+              <ThemedView level="default" style={styles.totalCard}>
+                <ThemedText variant="caption" color={theme.textMuted}>
+                  {statsMode === 'worker' ? '人员总计' : '项目总计'}
+                </ThemedText>
                 <ThemedText variant="h2" color={theme.primary}>
-                  {item.totalHours}天
+                  {totalHours.toFixed(1)}天
                 </ThemedText>
               </ThemedView>
-            ))
+
+              {/* 列表 */}
+              {currentStats.map((item, index) => (
+                <ThemedView key={item.projectId || item.workerId} level="default" style={styles.statCard}>
+                  <View style={styles.statRank}>
+                    <ThemedText variant="h3" color={theme.buttonPrimaryText}>
+                      #{index + 1}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.statInfo}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                      {item.projectName || (item as WorkerHours).workerName}
+                    </ThemedText>
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      总工时
+                    </ThemedText>
+                  </View>
+                  <ThemedText variant="h2" color={theme.primary}>
+                    {item.totalHours.toFixed(1)}天
+                  </ThemedText>
+                </ThemedView>
+              ))}
+            </>
           )}
         </ScrollView>
 
