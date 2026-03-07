@@ -8,6 +8,9 @@ import {
   Platform,
   Modal,
   TextInput,
+  TouchableWithoutFeedback,   // 👈 这一行
+  KeyboardAvoidingView,       // 👈 这一行
+  Keyboard,                   // 👈 这一行
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { FontAwesome6 } from '@expo/vector-icons';
