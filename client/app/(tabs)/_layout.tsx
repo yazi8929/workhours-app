@@ -52,8 +52,7 @@ export default function TabLayout() {
           ),
         }}
       />
-    // 暂时注释掉统计页面
-{/* <Tabs.Screen
+  <Tabs.Screen
   name="stats"
   options={{
     title: '统计',
@@ -61,7 +60,8 @@ export default function TabLayout() {
       <FontAwesome6 name="chart-simple" size={20} color={color} />
     ),
   }}
-/> */}
+/>
+
 
     </Tabs>
   );
