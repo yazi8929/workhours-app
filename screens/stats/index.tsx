@@ -1,110 +1,145 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   ScrollView,
   TouchableOpacity,
   Alert,
+  Modal,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { FontAwesome6 } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/hooks/useTheme';
-import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { createStyles } from './styles';
-import { Spacing } from '@/constants/theme';
-import { workLogService, workerService, projectService } from '@/services/LocalStorage';
+import { workLogService, exportAllData, importAllData, type WorkerHours } from '@/services/LocalStorage';
 
-interface StatItem {
-  id: string;
-  name: string;
+interface WorkerRecord {
+  date: string;
+  projectId: number;
+  projectName: string;
+  description: string;
+  hours: number;
+}
+
+interface WorkerStatsWithDetails {
+  workerId: number;
+  workerName: string;
   totalHours: number;
-  workers?: Array<{ id: string; name: string; hours: number }>;
-  workRecords?: Array<{
-    projectId: string;
-    projectName: string;
-    date: string;
-    description: string;
-    hours: number;
-  }>;
+  records: WorkerRecord[];
+}
+
+interface ProjectRecord {
+  date: string;
+  workerId: number;
+  workerName: string;
+  description: string;
+  hours: number;
+}
+
+interface ProjectStatsWithDetails {
+  projectId: number;
+  projectName: string;
+  totalHours: number;
+  records: ProjectRecord[];
 }
 
 export default function StatsScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const router = useSafeRouter();
 
-  const [activeTab, setActiveTab] = useState<'worker' | 'project'>('worker');
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [workerStats, setWorkerStats] = useState<StatItem[]>([]);
-  const [projectStats, setProjectStats] = useState<StatItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [statsMode, setStatsMode] = useState<'worker' | 'project'>('worker');
+  const [workerStats, setWorkerStats] = useState<WorkerStatsWithDetails[]>([]);
+  const [projectStats, setProjectStats] = useState<ProjectStatsWithDetails[]>([]);
+  const [showDataModal, setShowDataModal] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
 
-  // 加载统计数据
   const fetchStats = useCallback(async () => {
-    setLoading(true);
     try {
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth();
-
-      // 获取项目统计数据
-      const projectData = await workLogService.getMonthlyStats(year, month);
-      setProjectStats(projectData.projectStats);
-
-      // 获取人员统计数据（需要自己计算）
-      const allWorkLogs = await workLogService.getWorkLogs();
-      const allWorkers = await workerService.getWorkers();
-
-      // 筛选指定年月的记录
-      const filteredLogs = allWorkLogs.filter(log => {
+      const year = selectedDate.getFullYear();
+      const month = selectedDate.getMonth();
+      
+      // 获取按人员详细统计
+      const workers = await workLogService.getMonthlyStats(year, month);
+      
+      // 获取所有工时记录
+      const allLogs = await workLogService.getAll();
+      
+      // 筛选指定月份的记录
+      const monthlyLogs = allLogs.filter(log => {
         const logDate = new Date(log.date);
         return logDate.getFullYear() === year && logDate.getMonth() === month;
       });
-
-      // 按人员分组统计
-      const workerMap = new Map<string, StatItem>();
-
-      filteredLogs.forEach(log => {
-        log.workers.forEach(w => {
-          if (!workerMap.has(w.id)) {
-            const worker = allWorkers.find(wk => wk.id === w.id);
-            workerMap.set(w.id, {
-              id: w.id,
-              name: worker?.name || '未知',
-              totalHours: 0,
-              workRecords: [],
-            });
-          }
-          const stat = workerMap.get(w.id)!;
-          stat.totalHours += w.hours;
-          if (stat.workRecords) {
-            const existingRecord = stat.workRecords.find(r => r.date === log.date);
-            if (existingRecord) {
-              existingRecord.hours += w.hours;
-            } else {
-              stat.workRecords.push({
+      
+      // 按人员分组详细记录
+      const workerMap = new Map<number, WorkerStatsWithDetails>();
+      
+      workers.forEach(worker => {
+        const workerRecords = monthlyLogs
+          .filter(log => log.workers.some(w => w.id === worker.workerId))
+          .flatMap(log => 
+            log.workers
+              .filter(w => w.id === worker.workerId)
+              .map(w => ({
+                date: log.date,
                 projectId: log.projectId,
                 projectName: log.projectName,
-                date: log.date,
                 description: log.description,
                 hours: w.hours,
-              });
-            }
-          }
+              }))
+          );
+        
+        workerMap.set(worker.workerId, {
+          workerId: worker.workerId,
+          workerName: worker.workerName,
+          totalHours: worker.totalHours,
+          records: workerRecords,
         });
       });
+      
+      setWorkerStats(Array.from(workerMap.values()).sort((a, b) => b.totalHours - a.totalHours));
 
-      // 按工时排序
-      const workerStatsArray = Array.from(workerMap.values()).sort((a, b) => b.totalHours - a.totalHours);
-      setWorkerStats(workerStatsArray);
+      // 获取按项目详细统计
+      const projects = await workLogService.getProjectStats(year, month);
+      
+      // 按项目分组详细记录
+      const projectMap = new Map<number, ProjectStatsWithDetails>();
+      
+      projects.forEach(project => {
+        const projectRecords = monthlyLogs
+          .filter(log => log.projectId === project.projectId)
+          .flatMap(log => 
+            log.workers.map(w => ({
+              date: log.date,
+              workerId: w.id,
+              workerName: w.name,
+              description: log.description,
+              hours: w.hours,
+            }))
+          );
+        
+        projectMap.set(project.projectId, {
+          projectId: project.projectId,
+          projectName: project.projectName,
+          totalHours: project.totalHours,
+          records: projectRecords,
+        });
+      });
+      
+      setProjectStats(Array.from(projectMap.values()).sort((a, b) => b.totalHours - a.totalHours));
     } catch (error) {
       console.error('获取统计数据失败:', error);
-    } finally {
-      setLoading(false);
+      Alert.alert('错误', '获取统计数据失败');
     }
-  }, [currentDate]);
+  }, [selectedDate]);
 
   useFocusEffect(
     useCallback(() => {
@@ -112,149 +147,145 @@ export default function StatsScreen() {
     }, [fetchStats])
   );
 
-  // 切换月份
-  const changeMonth = (delta: number) => {
-    const newDate = new Date(currentDate);
-    newDate.setMonth(newDate.getMonth() + delta);
-    setCurrentDate(newDate);
+  const handleDateChange = (date: Date) => {
+    setSelectedDate(date);
   };
 
-  // 复制到剪贴板
-  const handleExport = useCallback(async () => {
-    try {
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth() + 1;
-      const monthLabel = `${year}年${month}月`;
-
-      let text = '';
-      const currentStats = activeTab === 'worker' ? workerStats : projectStats;
-
-      if (activeTab === 'worker') {
-        // 按人员统计
-        text = `${monthLabel} 人员工作日统计\n\n`;
-        text += `序号\t人员姓名\t工作天数\t总工作日\n`;
-        text += `${'─'.repeat(50)}\n`;
-
-        currentStats.forEach((item, index) => {
-          // 计算工作天数（去重日期）
-          const workDays = item.workRecords
-            ? new Set(item.workRecords.map(r => r.date)).size
-            : 0;
-
-          text += `${index + 1}\t${item.name}\t${workDays}\t${item.totalHours.toFixed(2)}\n`;
-
-          // 添加详细工作内容
-          if (item.workRecords && item.workRecords.length > 0) {
-            item.workRecords.forEach(record => {
-              text += `\t\t${record.date}\t${record.projectName}\t${record.hours.toFixed(2)}天\t${record.description}\n`;
-            });
-            text += `\n`; // 每个人之间加空行
-          }
-        });
-
-        text += `${'─'.repeat(50)}\n`;
-        text += `总计：${currentStats.length} 人\t${currentStats.reduce((sum, item) => sum + (item.workRecords ? new Set(item.workRecords.map(r => r.date)).size : 0), 0)} 人天\t${currentStats.reduce((sum, item) => sum + item.totalHours, 0).toFixed(2)} 工作日`;
+  const toggleExpand = (id: number) => {
+    setExpandedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
       } else {
-        // 按项目统计
-        text = `${monthLabel} 项目工作日统计\n\n`;
-        text += `序号\t项目名称\t人员姓名\t工作日\n`;
-        text += `${'─'.repeat(50)}\n`;
-        let globalIndex = 1;
-        currentStats.forEach(project => {
-          if (project.workers && project.workers.length > 0) {
-            project.workers.forEach(worker => {
-              text += `${globalIndex}\t${project.name}\t${worker.name}\t${worker.hours.toFixed(2)}\n`;
-              globalIndex++;
-            });
-          } else {
-            text += `${globalIndex}\t${project.name}\t无人员\t0\n`;
-            globalIndex++;
-          }
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleExportData = async () => {
+    try {
+      const jsonData = await exportAllData();
+      
+      const fileName = `workhours_backup_${new Date().toISOString().split('T')[0]}.json`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+      
+      await (FileSystem as any).writeAsStringAsync(fileUri, jsonData);
+      
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/json',
+          dialogTitle: '导出数据',
         });
-        text += `\n总计：${currentStats.reduce((sum, item) => sum + item.totalHours, 0).toFixed(2)} 工作日`;
+      } else {
+        Alert.alert('成功', `数据已导出到: ${fileUri}`);
+      }
+      setShowDataModal(false);
+    } catch (error: any) {
+      console.error('导出失败:', error);
+      Alert.alert('错误', error.message || '导出失败');
+    }
+  };
+
+  const handleImportData = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        return;
       }
 
-      await Clipboard.setStringAsync(text);
-      Alert.alert('成功', '数据已复制到剪贴板');
-    } catch (error) {
-      console.error('复制失败:', error);
-      Alert.alert('错误', '复制失败');
-    }
-  }, [activeTab, currentDate, workerStats, projectStats]);
+      const fileUri = result.assets[0].uri;
+      const jsonData = await (FileSystem as any).readAsStringAsync(fileUri);
 
-  const monthLabel = `${currentDate.getFullYear()}年${currentDate.getMonth() + 1}月`;
-  const currentStats = activeTab === 'worker' ? workerStats : projectStats;
+      const importResult = await importAllData(jsonData);
+
+      Alert.alert(
+        '导入成功',
+        `已导入：\n- 项目：${importResult.projectsCount} 个\n- 人员：${importResult.workersCount} 个\n- 工时记录：${importResult.workLogsCount} 条`,
+        [
+          { text: '确定', onPress: () => {
+            setShowDataModal(false);
+            fetchStats();
+          }}
+        ]
+      );
+    } catch (error: any) {
+      console.error('导入失败:', error);
+      Alert.alert('错误', error.message || '导入失败');
+    }
+  };
+
+  const currentStats = statsMode === 'worker' ? workerStats : projectStats;
   const totalHours = currentStats.reduce((sum, item) => sum + item.totalHours, 0);
 
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
       <View style={styles.container}>
-        {/* 头部 */}
-        <ThemedView level="default" style={styles.headerCard}>
-          <View style={styles.headerTitleRow}>
+        <View style={styles.header}>
+          <View>
             <ThemedText variant="h2" color={theme.textPrimary}>
               月度统计
             </ThemedText>
-            <TouchableOpacity style={styles.exportButton} onPress={handleExport}>
-              <FontAwesome6 name="clipboard" size={18} color={theme.buttonPrimaryText} />
-              <ThemedText variant="caption" color={theme.buttonPrimaryText} style={styles.exportButtonText}>
-                复制
+            <View style={styles.modeSwitch}>
+              <TouchableOpacity
+                style={[styles.modeButton, statsMode === 'worker' && styles.modeButtonActive]}
+                onPress={() => setStatsMode('worker')}
+              >
+                <FontAwesome6 
+                  name="user" 
+                  size={16} 
+                  color={statsMode === 'worker' ? theme.buttonPrimaryText : theme.textSecondary}
+                  style={{ marginRight: 6 }}
+                />
+                <ThemedText
+                  variant="caption"
+                  color={statsMode === 'worker' ? theme.buttonPrimaryText : theme.textSecondary}
+                >
+                  按人员
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeButton, statsMode === 'project' && styles.modeButtonActive]}
+                onPress={() => setStatsMode('project')}
+              >
+                <FontAwesome6 
+                  name="folder" 
+                  size={16} 
+                  color={statsMode === 'project' ? theme.buttonPrimaryText : theme.textSecondary}
+                  style={{ marginRight: 6 }}
+                />
+                <ThemedText
+                  variant="caption"
+                  color={statsMode === 'project' ? theme.buttonPrimaryText : theme.textSecondary}
+                >
+                  按项目
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={() => setShowDataModal(true)} style={styles.iconButton}>
+              <FontAwesome6 name="database" size={20} color={theme.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateButton}>
+              <FontAwesome6 name="calendar" size={16} color={theme.primary} />
+              <ThemedText variant="body" color={theme.primary} style={{ marginLeft: 8 }}>
+                {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月
               </ThemedText>
             </TouchableOpacity>
           </View>
-
-          {/* 月份选择器 */}
-          <View style={styles.monthSelector}>
-            <TouchableOpacity onPress={() => changeMonth(-1)}>
-              <FontAwesome6 name="chevron-left" size={20} color={theme.textPrimary} />
-            </TouchableOpacity>
-            <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-              {monthLabel}
-            </ThemedText>
-            <TouchableOpacity onPress={() => changeMonth(1)}>
-              <FontAwesome6 name="chevron-right" size={20} color={theme.textPrimary} />
-            </TouchableOpacity>
-          </View>
-        </ThemedView>
-
-        {/* Tab 切换 */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'worker' && styles.tabActive]}
-            onPress={() => setActiveTab('worker')}
-          >
-            <ThemedText
-              variant="body"
-              color={activeTab === 'worker' ? theme.buttonPrimaryText : theme.textSecondary}
-            >
-              按人员统计
-            </ThemedText>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'project' && styles.tabActive]}
-            onPress={() => setActiveTab('project')}
-          >
-            <ThemedText
-              variant="body"
-              color={activeTab === 'project' ? theme.buttonPrimaryText : theme.textSecondary}
-            >
-              按项目统计
-            </ThemedText>
-          </TouchableOpacity>
         </View>
 
-        {/* 统计列表 */}
-        <ScrollView contentContainerStyle={styles.listContent}>
-          {loading ? (
+        <ScrollView style={styles.list}>
+          {currentStats.length === 0 ? (
             <ThemedView level="default" style={styles.emptyState}>
-              <ThemedText variant="caption" color={theme.textMuted}>
-                加载中...
-              </ThemedText>
-            </ThemedView>
-          ) : currentStats.length === 0 ? (
-            <ThemedView level="default" style={styles.emptyState}>
-              <ThemedText variant="caption" color={theme.textMuted}>
-                {monthLabel} 暂无数据
+              <FontAwesome6 name="chart-simple" size={48} color={theme.textMuted} />
+              <ThemedText variant="body" color={theme.textMuted} style={{ marginTop: 16 }}>
+                暂无数据
               </ThemedText>
             </ThemedView>
           ) : (
@@ -262,7 +293,7 @@ export default function StatsScreen() {
               {/* 总计 */}
               <ThemedView level="default" style={styles.totalCard}>
                 <ThemedText variant="caption" color={theme.textMuted}>
-                  {activeTab === 'worker' ? '人员总计' : '项目总计'}
+                  {statsMode === 'worker' ? '人员总计' : '项目总计'}
                 </ThemedText>
                 <ThemedText variant="h2" color={theme.primary}>
                   {totalHours.toFixed(2)} 工作日
@@ -270,103 +301,165 @@ export default function StatsScreen() {
               </ThemedView>
 
               {/* 列表 */}
-              {currentStats.map(item => (
-                <TouchableOpacity
-                  key={item.id}
-                  onPress={() => {
-                    const year = currentDate.getFullYear();
-                    const month = currentDate.getMonth() + 1;
-
-                    if (activeTab === 'worker') {
-                      router.push('/worker-detail', {
-                        workerId: item.id,
-                        workerName: item.name,
-                        year: year.toString(),
-                        month: month.toString(),
-                      });
-                    } else {
-                      router.push('/project-detail', {
-                        projectId: item.id,
-                        projectName: item.name,
-                        year: year.toString(),
-                        month: month.toString(),
-                      });
-                    }
-                  }}
-                >
-                  <ThemedView level="default" style={styles.statCard}>
-                    <View style={styles.statContent}>
-                      <View style={styles.statNameRow}>
-                        <ThemedText variant="bodyMedium" color={theme.textPrimary}>
-                          {item.name}
+              {statsMode === 'worker' ? (
+                workerStats.map(item => (
+                  <ThemedView key={item.workerId} level="default" style={styles.statsGroup}>
+                    <TouchableOpacity
+                      style={styles.statsHeader}
+                      onPress={() => toggleExpand(item.workerId)}
+                    >
+                      <View style={styles.statsHeaderLeft}>
+                        <ThemedText variant="h3" color={theme.textPrimary}>
+                          {item.workerName}
                         </ThemedText>
-                        <FontAwesome6 name="chevron-right" size={14} color={theme.textMuted} />
+                        <ThemedText variant="caption" color={theme.textMuted}>
+                          共 {item.records.length} 条记录
+                        </ThemedText>
                       </View>
+                      <View style={styles.statsHeaderRight}>
+                        <ThemedText variant="h2" color={theme.primary}>
+                          {item.totalHours.toFixed(2)} 工作日
+                        </ThemedText>
+                        <FontAwesome6
+                          name={expandedItems.has(item.workerId) ? 'chevron-up' : 'chevron-down'}
+                          size={16}
+                          color={theme.textMuted}
+                        />
+                      </View>
+                    </TouchableOpacity>
 
-                      {/* 按项目统计时显示人员明细 */}
-                      {activeTab === 'project' && item.workers && item.workers.length > 0 && (
-                        <View style={styles.workersDetail}>
-                          {item.workers.map(worker => (
-                            <View key={worker.id} style={styles.workerRow}>
-                              <FontAwesome6 name="user" size={12} color={theme.textMuted} />
-                              <ThemedText variant="caption" color={theme.textSecondary} style={styles.workerName}>
-                                {worker.name}
+                    {expandedItems.has(item.workerId) && (
+                      <View style={styles.statsDetails}>
+                        {item.records.map((record, index) => (
+                          <View key={`${record.date}-${index}`} style={styles.recordItem}>
+                            <View style={styles.recordLeft}>
+                              <ThemedText variant="caption" color={theme.textMuted}>
+                                {record.date}
                               </ThemedText>
-                              <ThemedText variant="caption" color={theme.primary}>
-                                {worker.hours}天
+                              <ThemedText variant="bodySmall" color={theme.textPrimary}>
+                                {record.projectName}
                               </ThemedText>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-
-                      {/* 按人员统计时显示工作记录明细 */}
-                      {activeTab === 'worker' && item.workRecords && item.workRecords.length > 0 && (
-                        <View style={styles.workRecordsDetail}>
-                          {item.workRecords.slice(0, 3).map((record, index) => (
-                            <View key={`${record.date}-${index}`} style={styles.workRecordRow}>
-                              <View style={styles.workRecordHeader}>
-                                <FontAwesome6 name="calendar" size={12} color={theme.textMuted} />
-                                <ThemedText variant="caption" color={theme.textSecondary} style={styles.recordDate}>
-                                  {record.date}
-                                </ThemedText>
-                                <ThemedText variant="caption" color={theme.primary}>
-                                  {record.hours}天
-                                </ThemedText>
-                              </View>
-                              <View style={styles.workRecordProject}>
-                                <FontAwesome6 name="folder" size={12} color={theme.primary} />
-                                <ThemedText variant="caption" color={theme.textSecondary} style={styles.recordProjectName}>
-                                  {record.projectName}
-                                </ThemedText>
-                              </View>
-                              <ThemedText variant="caption" color={theme.textMuted} style={styles.recordDesc} numberOfLines={2}>
+                              <ThemedText variant="bodySmall" color={theme.textSecondary} style={styles.recordDesc}>
                                 {record.description}
                               </ThemedText>
                             </View>
-                          ))}
-                          {item.workRecords.length > 3 && (
-                            <ThemedText variant="caption" color={theme.textMuted} style={styles.moreText}>
-                              还有 {item.workRecords.length - 3} 条记录...
+                            <ThemedText variant="bodyMedium" color={theme.primary}>
+                              {record.hours} 天
                             </ThemedText>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.statHours}>
-                      <ThemedText variant="h3" color={theme.primary}>
-                        {item.totalHours.toFixed(2)}
-                      </ThemedText>
-                      <ThemedText variant="caption" color={theme.textMuted}>
-                        工作日
-                      </ThemedText>
-                    </View>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                   </ThemedView>
-                </TouchableOpacity>
-              ))}
+                ))
+              ) : (
+                projectStats.map(item => (
+                  <ThemedView key={item.projectId} level="default" style={styles.statsGroup}>
+                    <TouchableOpacity
+                      style={styles.statsHeader}
+                      onPress={() => toggleExpand(item.projectId)}
+                    >
+                      <View style={styles.statsHeaderLeft}>
+                        <ThemedText variant="h3" color={theme.textPrimary}>
+                          {item.projectName}
+                        </ThemedText>
+                        <ThemedText variant="caption" color={theme.textMuted}>
+                          共 {item.records.length} 条记录
+                        </ThemedText>
+                      </View>
+                      <View style={styles.statsHeaderRight}>
+                        <ThemedText variant="h2" color={theme.primary}>
+                          {item.totalHours.toFixed(2)} 工作日
+                        </ThemedText>
+                        <FontAwesome6
+                          name={expandedItems.has(item.projectId) ? 'chevron-up' : 'chevron-down'}
+                          size={16}
+                          color={theme.textMuted}
+                        />
+                      </View>
+                    </TouchableOpacity>
+
+                    {expandedItems.has(item.projectId) && (
+                      <View style={styles.statsDetails}>
+                        {item.records.map((record, index) => (
+                          <View key={`${record.date}-${index}`} style={styles.recordItem}>
+                            <View style={styles.recordLeft}>
+                              <ThemedText variant="caption" color={theme.textMuted}>
+                                {record.date}
+                              </ThemedText>
+                              <ThemedText variant="bodySmall" color={theme.textPrimary}>
+                                {record.workerName}
+                              </ThemedText>
+                              <ThemedText variant="bodySmall" color={theme.textSecondary} style={styles.recordDesc}>
+                                {record.description}
+                              </ThemedText>
+                            </View>
+                            <ThemedText variant="bodyMedium" color={theme.primary}>
+                              {record.hours} 天
+                            </ThemedText>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </ThemedView>
+                ))
+              )}
             </>
           )}
         </ScrollView>
+
+        {showDatePicker && (
+          <DateTimePicker
+            value={selectedDate}
+            mode="date"
+            display="default"
+            onChange={(event, date) => {
+              setShowDatePicker(false);
+              if (date) handleDateChange(date);
+            }}
+          />
+        )}
+
+        <Modal visible={showDataModal} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <ThemedView level="default" style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <ThemedText variant="h3" color={theme.textPrimary}>
+                  数据管理
+                </ThemedText>
+                <TouchableOpacity onPress={() => setShowDataModal(false)}>
+                  <FontAwesome6 name="xmark" size={20} color={theme.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalBody}>
+                <TouchableOpacity style={styles.dataAction} onPress={handleExportData}>
+                  <FontAwesome6 name="file-export" size={24} color={theme.primary} />
+                  <View style={styles.dataActionText}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                      导出数据
+                    </ThemedText>
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      将所有数据导出为 JSON 文件
+                    </ThemedText>
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.dataAction} onPress={handleImportData}>
+                  <FontAwesome6 name="file-import" size={24} color={theme.primary} />
+                  <View style={styles.dataActionText}>
+                    <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                      导入数据
+                    </ThemedText>
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      从 JSON 文件导入数据
+                    </ThemedText>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </ThemedView>
+          </View>
+        </Modal>
       </View>
     </Screen>
   );
