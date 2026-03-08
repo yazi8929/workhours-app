@@ -22,14 +22,14 @@ import { workLogService, exportAllData, importAllData, type WorkerHours } from '
 
 interface WorkerRecord {
   date: string;
-  projectId: string;
+  projectId: number;
   projectName: string;
   description: string;
   hours: number;
 }
 
 interface WorkerStatsWithDetails {
-  workerId: string;
+  workerId: number;
   workerName: string;
   totalHours: number;
   records: WorkerRecord[];
@@ -37,14 +37,14 @@ interface WorkerStatsWithDetails {
 
 interface ProjectRecord {
   date: string;
-  workerId: string;
+  workerId: number;
   workerName: string;
   description: string;
   hours: number;
 }
 
 interface ProjectStatsWithDetails {
-  projectId: string;
+  projectId: number;
   projectName: string;
   totalHours: number;
   records: ProjectRecord[];
@@ -60,7 +60,7 @@ export default function StatsScreen() {
   const [workerStats, setWorkerStats] = useState<WorkerStatsWithDetails[]>([]);
   const [projectStats, setProjectStats] = useState<ProjectStatsWithDetails[]>([]);
   const [showDataModal, setShowDataModal] = useState(false);
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
 
   const fetchStats = useCallback(async () => {
     try {
@@ -71,7 +71,7 @@ export default function StatsScreen() {
       const workers = await workLogService.getMonthlyStats(year, month);
       
       // 获取所有工时记录
-      const allLogs = await workLogService.getAllWorkLogs();
+      const allLogs = await workLogService.getAll();
       
       // 筛选指定月份的记录
       const monthlyLogs = allLogs.filter(log => {
@@ -80,7 +80,7 @@ export default function StatsScreen() {
       });
       
       // 按人员分组详细记录
-      const workerMap = new Map<string, WorkerStatsWithDetails>();
+      const workerMap = new Map<number, WorkerStatsWithDetails>();
       
       workers.forEach(worker => {
         const workerRecords = monthlyLogs
@@ -111,7 +111,7 @@ export default function StatsScreen() {
       const projects = await workLogService.getProjectStats(year, month);
       
       // 按项目分组详细记录
-      const projectMap = new Map<string, ProjectStatsWithDetails>();
+      const projectMap = new Map<number, ProjectStatsWithDetails>();
       
       projects.forEach(project => {
         const projectRecords = monthlyLogs
@@ -151,7 +151,7 @@ export default function StatsScreen() {
     setSelectedDate(date);
   };
 
-  const toggleExpand = (id: string) => {
+  const toggleExpand = (id: number) => {
     setExpandedItems(prev => {
       const newSet = new Set(prev);
       if (newSet.has(id)) {
