@@ -20,11 +20,9 @@ interface WorkLog {
   id: number;
   projectId: number;
   projectName: string;
-  workerId: number;
-  workerName: string;
-  workDate: string;
-  hours: number;
-  description?: string;
+  date: string;
+  description: string;
+  workers: Array<{ id: number; name: string; hours: number }>;
   createdAt: string;
 }
 
@@ -173,12 +171,12 @@ const workLogService = {
 
   getByWorkerId: async (workerId: number): Promise<WorkLog[]> => {
     const logs = await workLogService.getAll();
-    return logs.filter(log => log.workerId === workerId);
+    return logs.filter(log => log.workers.some(w => w.id === workerId));
   },
 
   getByDate: async (date: string): Promise<WorkLog[]> => {
     const logs = await workLogService.getAll();
-    return logs.filter(log => log.workDate === date);
+    return logs.filter(log => log.date === date);
   },
 
   create: async (data: Omit<WorkLog, 'id' | 'createdAt'>): Promise<WorkLog> => {
@@ -215,23 +213,25 @@ const workLogService = {
   getMonthlyStats: async (year: number, month: number): Promise<WorkerHours[]> => {
     const logs = await workLogService.getAll();
     const filteredLogs = logs.filter(log => {
-      const logDate = new Date(log.workDate);
+      const logDate = new Date(log.date);
       return logDate.getFullYear() === year && logDate.getMonth() === month;
     });
 
     const workerMap = new Map<number, WorkerHours>();
 
     filteredLogs.forEach(log => {
-      const existing = workerMap.get(log.workerId);
-      if (existing) {
-        existing.totalHours += log.hours;
-      } else {
-        workerMap.set(log.workerId, {
-          workerId: log.workerId,
-          workerName: log.workerName,
-          totalHours: log.hours,
-        });
-      }
+      log.workers.forEach(worker => {
+        const existing = workerMap.get(worker.id);
+        if (existing) {
+          existing.totalHours += worker.hours;
+        } else {
+          workerMap.set(worker.id, {
+            workerId: worker.id,
+            workerName: worker.name,
+            totalHours: worker.hours,
+          });
+        }
+      });
     });
 
     return Array.from(workerMap.values()).sort((a, b) => b.totalHours - a.totalHours);
@@ -241,7 +241,7 @@ const workLogService = {
   getProjectStats: async (year: number, month: number): Promise<ProjectHours[]> => {
     const logs = await workLogService.getAll();
     const filteredLogs = logs.filter(log => {
-      const logDate = new Date(log.workDate);
+      const logDate = new Date(log.date);
       return logDate.getFullYear() === year && logDate.getMonth() === month;
     });
 
@@ -250,12 +250,12 @@ const workLogService = {
     filteredLogs.forEach(log => {
       const existing = projectMap.get(log.projectId);
       if (existing) {
-        existing.totalHours += log.hours;
+        existing.totalHours += log.workers.reduce((sum, w) => sum + w.hours, 0);
       } else {
         projectMap.set(log.projectId, {
           projectId: log.projectId,
           projectName: log.projectName,
-          totalHours: log.hours,
+          totalHours: log.workers.reduce((sum, w) => sum + w.hours, 0),
         });
       }
     });
