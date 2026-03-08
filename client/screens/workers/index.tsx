@@ -1,21 +1,16 @@
 import React, { useCallback, useState, useMemo } from 'react';
 import {
   View,
-  Text,
-  TouchableOpacity,
-  Alert,
   ScrollView,
-  Platform,
+  TouchableOpacity,
+  Text,
+  Alert,
   Modal,
   TextInput,
-  TouchableWithoutFeedback,
-  KeyboardAvoidingView,
-  Keyboard,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { FontAwesome6 } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -26,7 +21,6 @@ import { workerService } from '@/services/LocalStorage';
 interface Worker {
   id: number;
   name: string;
-  role?: string;
   createdAt: string;
 }
 
@@ -35,23 +29,22 @@ export default function WorkersScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
 
   const [workers, setWorkers] = useState<Worker[]>([]);
-  const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [workerName, setWorkerName] = useState('');
-  const [workerRole, setWorkerRole] = useState('');
+  const [loading, setLoading] = useState(false);
   const [editingWorker, setEditingWorker] = useState<Worker | null>(null);
 
-  // 获取人员列表
+  // 加载人员列表
   const fetchWorkers = useCallback(async () => {
     try {
       const data = await workerService.getAll();
       setWorkers(data);
     } catch (error: any) {
       console.error('获取人员列表失败:', error);
+      Alert.alert('错误', '获取人员列表失败');
     }
   }, []);
 
-  // 每次进入页面刷新数据
   useFocusEffect(
     useCallback(() => {
       fetchWorkers();
@@ -62,7 +55,6 @@ export default function WorkersScreen() {
   const handleEdit = (worker: Worker) => {
     setEditingWorker(worker);
     setWorkerName(worker.name);
-    setWorkerRole(worker.role || '');
     setModalVisible(true);
   };
 
@@ -77,33 +69,26 @@ export default function WorkersScreen() {
 
     try {
       const isEdit = editingWorker !== null;
-
-      if (isEdit) {
-        await workerService.update(editingWorker.id, {
-          name: workerName.trim(),
-          role: workerRole.trim() || undefined,
-        });
+      
+      if (isEdit && editingWorker) {
+        await workerService.update(editingWorker.id, { name: workerName.trim() });
         Alert.alert('成功', '人员已更新');
       } else {
-        await workerService.create({
-          name: workerName.trim(),
-          role: workerRole.trim() || undefined,
-        });
+        await workerService.create({ name: workerName.trim() });
         Alert.alert('成功', '人员已添加');
       }
 
       setModalVisible(false);
       setEditingWorker(null);
       setWorkerName('');
-      setWorkerRole('');
       fetchWorkers();
     } catch (error: any) {
       console.error('保存人员失败:', error);
-      Alert.alert('错误', '保存失败');
+      Alert.alert('错误', error.message || '保存失败');
     } finally {
       setLoading(false);
     }
-  }, [workerName, workerRole, editingWorker, fetchWorkers]);
+  }, [workerName, editingWorker, fetchWorkers]);
 
   // 删除人员
   const handleDelete = useCallback((worker: Worker) => {
@@ -116,16 +101,13 @@ export default function WorkersScreen() {
           text: '删除',
           style: 'destructive',
           onPress: async () => {
-            setLoading(true);
             try {
               await workerService.delete(worker.id);
               Alert.alert('成功', '人员已删除');
               fetchWorkers();
             } catch (error: any) {
               console.error('删除人员失败:', error);
-              Alert.alert('错误', '删除失败');
-            } finally {
-              setLoading(false);
+              Alert.alert('错误', error.message || '删除失败');
             }
           },
         },
@@ -133,179 +115,141 @@ export default function WorkersScreen() {
     );
   }, [fetchWorkers]);
 
-  // 复制人员列表
-  const handleCopy = useCallback(async () => {
-    if (workers.length === 0) {
-      Alert.alert('提示', '暂无人员数据');
-      return;
-    }
-
-    let text = '人员列表\n';
-    text += `${'─'.repeat(50)}\n`;
-    workers.forEach((worker, index) => {
-      text += `${index + 1}. ${worker.name}`;
-      if (worker.role) {
-        text += ` (${worker.role})`;
-      }
-      text += '\n';
-    });
-    text += `\n总计：${workers.length} 人`;
-
-    await Clipboard.setStringAsync(text);
-    Alert.alert('成功', '人员列表已复制到剪贴板');
-  }, [workers]);
-
-  // 打开新增模态框
-  const handleAdd = () => {
-    setEditingWorker(null);
-    setWorkerName('');
-    setWorkerRole('');
-    setModalVisible(true);
+  // 复制姓名到剪贴板
+  const handleCopy = async (worker: Worker) => {
+    await Clipboard.setStringAsync(worker.name);
+    Alert.alert('提示', '人员姓名已复制');
   };
 
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
       <View style={styles.container}>
-        {/* 头部 */}
-        <ThemedView level="default" style={styles.header}>
-          <View style={styles.headerTitleRow}>
-            <ThemedText variant="h2" color={theme.textPrimary}>
-              人员管理
+        <View style={styles.header}>
+          <View>
+            <ThemedText variant="h2" color={theme.textPrimary}>人员管理</ThemedText>
+            <ThemedText variant="caption" color={theme.textMuted}>
+              共 {workers.length} 人
             </ThemedText>
-            <View style={styles.headerActions}>
-              <TouchableOpacity style={styles.iconButton} onPress={handleCopy}>
-                <FontAwesome6 name="copy" size={20} color={theme.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.iconButton} onPress={handleAdd}>
-                <FontAwesome6 name="plus" size={20} color={theme.primary} />
-              </TouchableOpacity>
-            </View>
           </View>
-          <ThemedText variant="caption" color={theme.textMuted}>
-            共 {workers.length} 人
-          </ThemedText>
-        </ThemedView>
+          <TouchableOpacity
+            style={[styles.addButton, { backgroundColor: theme.primary }]}
+            onPress={() => {
+              setEditingWorker(null);
+              setWorkerName('');
+              setModalVisible(true);
+            }}
+          >
+            <FontAwesome6 name="user-plus" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
 
-        {/* 人员列表 */}
-        <ScrollView contentContainerStyle={styles.listContent}>
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
+        >
           {workers.length === 0 ? (
-            <ThemedView level="default" style={styles.emptyState}>
-              <FontAwesome6 name="users" size={48} color={theme.textMuted} />
-              <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 16 }}>
+            <View style={styles.emptyContainer}>
+              <FontAwesome6 name="user-slash" size={60} color={theme.textMuted} />
+              <ThemedText variant="bodyMedium" color={theme.textMuted} style={styles.emptyText}>
                 暂无人员
               </ThemedText>
-              <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
-                <FontAwesome6 name="plus" size={16} color={theme.buttonPrimaryText} />
-                <ThemedText variant="caption" color={theme.buttonPrimaryText} style={{ marginLeft: 8 }}>
-                  添加人员
-                </ThemedText>
-              </TouchableOpacity>
-            </ThemedView>
+            </View>
           ) : (
             workers.map((worker) => (
-              <ThemedView key={worker.id} level="default" style={styles.workerCard}>
+              <ThemedView key={worker.id} level="tertiary" style={styles.workerCard}>
                 <View style={styles.workerInfo}>
-                  <View style={styles.workerNameRow}>
-                    <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.workerName}>
-                      {worker.name}
-                    </ThemedText>
-                    {worker.role && (
-                      <ThemedText variant="caption" color={theme.textMuted} style={styles.workerRole}>
-                        {worker.role}
-                      </ThemedText>
-                    )}
+                  <View style={styles.workerIcon}>
+                    <FontAwesome6 name="user" size={20} color={theme.primary} />
                   </View>
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    创建于 {new Date(worker.createdAt).toLocaleDateString()}
+                  <ThemedText variant="bodyMedium" color={theme.textPrimary} style={styles.workerName}>
+                    {worker.name}
                   </ThemedText>
                 </View>
                 <View style={styles.workerActions}>
-                  <TouchableOpacity style={styles.actionButton} onPress={() => handleEdit(worker)}>
-                    <FontAwesome6 name="pen" size={16} color={theme.primary} />
+                  <TouchableOpacity
+                    style={[styles.actionButton, { backgroundColor: theme.border }]}
+                    onPress={() => handleCopy(worker)}
+                  >
+                    <FontAwesome6 name="copy" size={16} color={theme.textPrimary} />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.actionButton}
+                    style={[styles.actionButton, { backgroundColor: theme.border }]}
+                    onPress={() => handleEdit(worker)}
+                  >
+                    <FontAwesome6 name="pen" size={16} color={theme.textPrimary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, { backgroundColor: '#ef4444' }]}
                     onPress={() => handleDelete(worker)}
                   >
-                    <FontAwesome6 name="trash" size={16} color={theme.error} />
+                    <FontAwesome6 name="trash" size={16} color="white" />
                   </TouchableOpacity>
                 </View>
               </ThemedView>
             ))
           )}
         </ScrollView>
-
-        {/* 模态框 */}
-        <Modal visible={modalVisible} transparent animationType="fade">
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <KeyboardAvoidingView
-              style={{ flex: 1 }}
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            >
-              <View style={styles.modalContainer}>
-                <ThemedView level="default" style={styles.modalContent}>
-                  <View style={styles.modalHeader}>
-                    <ThemedText variant="h3" color={theme.textPrimary}>
-                      {editingWorker ? '编辑人员' : '新增人员'}
-                    </ThemedText>
-                    <TouchableOpacity onPress={() => setModalVisible(false)}>
-                      <FontAwesome6 name="xmark" size={20} color={theme.textMuted} />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.modalBody}>
-                    <View style={styles.inputGroup}>
-                      <ThemedText variant="caption" color={theme.textMuted}>
-                        人员姓名
-                      </ThemedText>
-                      <TextInput
-                        style={styles.input}
-                        value={workerName}
-                        onChangeText={setWorkerName}
-                        placeholder="请输入人员姓名"
-                        placeholderTextColor={theme.textMuted}
-                      />
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                      <ThemedText variant="caption" color={theme.textMuted}>
-                        职位/角色（可选）
-                      </ThemedText>
-                      <TextInput
-                        style={styles.input}
-                        value={workerRole}
-                        onChangeText={setWorkerRole}
-                        placeholder="请输入职位或角色"
-                        placeholderTextColor={theme.textMuted}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={styles.modalFooter}>
-                    <TouchableOpacity
-                      style={[styles.modalButton, styles.cancelButton]}
-                      onPress={() => setModalVisible(false)}
-                    >
-                      <ThemedText variant="body" color={theme.textSecondary}>
-                        取消
-                      </ThemedText>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.modalButton, styles.saveButton, loading && styles.saveButtonDisabled]}
-                      onPress={handleSave}
-                      disabled={loading}
-                    >
-                      <ThemedText variant="body" color={theme.buttonPrimaryText}>
-                        {loading ? '保存中...' : '保存'}
-                      </ThemedText>
-                    </TouchableOpacity>
-                  </View>
-                </ThemedView>
-              </View>
-            </KeyboardAvoidingView>
-          </TouchableWithoutFeedback>
-        </Modal>
       </View>
+
+      {/* Modal */}
+      <Modal visible={modalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setModalVisible(false)}
+          />
+          <View style={[styles.modalContent, { backgroundColor: theme.backgroundDefault }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText variant="h3" color={theme.textPrimary}>
+                {editingWorker ? '编辑人员' : '新增人员'}
+              </ThemedText>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <FontAwesome6 name="xmark" size={24} color={theme.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <ThemedView level="root" style={styles.inputContainer}>
+                <ThemedText variant="caption" color={theme.textSecondary} style={styles.inputLabel}>
+                  人员姓名
+                </ThemedText>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.backgroundRoot, color: theme.textPrimary }]}
+                  placeholder="输入人员姓名"
+                  placeholderTextColor={theme.textMuted}
+                  value={workerName}
+                  onChangeText={setWorkerName}
+                />
+              </ThemedView>
+            </View>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setModalVisible(false)}
+              >
+                <ThemedText variant="bodyMedium" color={theme.textPrimary}>
+                  取消
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.submitButton]}
+                onPress={handleSave}
+                disabled={loading}
+              >
+                <ThemedText
+                  variant="bodyMedium"
+                  color={loading ? theme.textMuted : theme.buttonPrimaryText}
+                >
+                  {loading ? '保存中...' : '保存'}
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
