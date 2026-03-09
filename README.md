@@ -1,4 +1,106 @@
-# Expo App + Express.js
+# 项目记账应用
+
+基于 Expo 54 + React Native 的项目记账应用，支持项目管理、费用录入、财务统计、收款/开票记录及数据备份恢复。
+
+## 功能特性
+
+- 📊 **项目管理**: 创建和管理项目，跟踪负责人、日期、合同金额、结算金额等
+- 💰 **支出记录**: 录入项目支出，支持分类统计
+- 📈 **统计报表**: 查看财务数据和统计图表
+- 📝 **收款记录**: 记录项目收款，支持多次收款
+- 🧾 **开票记录**: 记录开票信息，支持多次开票
+- 💾 **数据管理**: 导出/导入数据，清除已完成项目
+- 🔒 **本地存储**: 数据完全存储在本地，支持离线使用
+
+## 技术栈
+
+- **前端**: Expo 54 + React Native + TypeScript
+- **数据存储**: AsyncStorage
+- **构建工具**: EAS Build
+- **CI/CD**: GitHub Actions
+- **日期选择**: @react-native-community/datetimepicker
+- **编码规范**: Airbnb
+
+---
+
+## 📱 下载安装
+
+### 方式一：GitHub Actions 自动构建
+
+#### 通过 GitHub Actions 下载最新 APK
+
+1. 访问仓库的 [Actions 页面](https://github.com/yazi8929/workhours-app/actions)
+2. 选择最新的成功构建
+3. 向下滚动到 "Artifacts" 部分
+4. 下载 `android-apk-production` 或 `android-apk-preview`
+
+详细说明请查看 [GitHub Actions 构建指南](./GITHUB_ACTIONS_GUIDE.md)
+
+### 方式二：本地构建
+
+如果你有 Expo 账户，可以参考以下文档自行构建：
+
+- [Android APK 构建指南](./BUILD_GUIDE.md)
+- [快速开始](./QUICK_START.md)
+
+---
+
+## 🚀 快速开始
+
+### 环境要求
+
+- Node.js 18+
+- pnpm 8+
+- Expo Go（用于测试）
+- Expo 账户（用于构建）
+
+### 安装依赖
+
+```bash
+pnpm i
+```
+
+### 本地开发
+
+```bash
+# 同时启动前端和后端服务（会自动处理端口占用）
+coze dev
+
+# 或分别启动
+cd client && npx expo start
+cd server && pnpm run dev
+```
+
+### 测试应用
+
+1. 在手机上安装 Expo Go
+2. 扫描终端显示的二维码
+3. 或在浏览器中打开 http://localhost:8081
+
+---
+
+## 📦 构建发布
+
+### 使用 GitHub Actions 自动构建（推荐）
+
+1. 配置 EXPO_TOKEN 到 GitHub Secrets（详见 [GITHUB_ACTIONS_GUIDE.md](./GITHUB_ACTIONS_GUIDE.md)）
+2. 推送代码到 main 分支自动触发构建
+3. 或在 Actions 页面手动触发
+
+### 本地构建
+
+```bash
+# 使用构建脚本
+./build-apk.sh
+
+# 或使用 EAS CLI
+cd client
+eas build --platform android --profile production
+```
+
+---
+
+## 📂 项目结构
 
 ## 目录结构规范（严格遵循）
 

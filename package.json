@@ -1,37 +1,25 @@
 {
-  "name": "workhours-app",
-  "version": "1.0.0",
-  "main": "expo-router/entry",
+  "name": "expo-express-monorepo",
+  "private": true,
+  "version": "0.0.0",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "dev": "bash .cozeproj/scripts/dev_run.sh",
+    "build": "bash .cozeproj/scripts/prod_build.sh",
+    "start": "bash .cozeproj/scripts/prod_run.sh",
+    "preinstall": "npx only-allow pnpm"
   },
-  "dependencies": {
-    "@expo/vector-icons": "^14.0.2",
-    "@react-native-async-storage/async-storage": "^1.23.1",
-    "@react-native-community/datetimepicker": "^8.2.0",
-    "expo": "~52.0.0",
-    "expo-clipboard": "~7.0.1",
-    "expo-file-system": "~18.0.0",
-    "expo-linking": "~7.0.0",
-    "expo-router": "~4.0.0",
-    "expo-secure-store": "~14.0.0",
-    "expo-status-bar": "~2.0.0",
-    "expo-system-ui": "~4.0.0",
-    "nativewind": "^4.1.0",
-    "react": "18.3.1",
-    "react-native": "0.76.5",
-    "react-native-gesture-handler": "~2.20.2",
-    "react-native-reanimated": "~3.16.1",
-    "react-native-safe-area-context": "4.14.0",
-    "react-native-screens": "~4.0.0"
+  "dependencies": {},
+  "devDependencies": {},
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "pnpm": ">=9.0.0"
   },
-  "devDependencies": {
-    "@babel/core": "^7.25.2",
-    "@types/react": "~18.3.12",
-    "typescript": "~5.3.3"
-  },
-  "private": true
+  "pnpm": {
+    "overrides": {
+      "esbuild": "0.27.2"
+    },
+    "patchedDependencies": {
+      "expo@54.0.33": "patches/expo@54.0.33.patch"
+    }
+  }
 }
