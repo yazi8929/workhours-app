@@ -74,10 +74,19 @@ jobs:
           npx expo prebuild --platform android --clean
 
       - name: 🏗️ Build APK
+        id: build
         run: |
           cd client/android
 
-          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+          # 设置默认构建类型
+          BUILD_TYPE="${{ github.event.inputs.build_type }}"
+          if [ -z "$BUILD_TYPE" ]; then
+            BUILD_TYPE="debug"
+          fi
+
+          echo "构建类型: $BUILD_TYPE"
+
+          if [ "$BUILD_TYPE" = "release" ]; then
             echo "构建 Release APK..."
             ./gradlew assembleRelease
             APK_PATH="app/build/outputs/apk/release/app-release.apk"
@@ -87,12 +96,23 @@ jobs:
             APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
           fi
 
+          echo "APK路径: $APK_PATH"
+
+          # 检查 APK 文件是否存在
+          if [ ! -f "$APK_PATH" ]; then
+            echo "错误: APK 文件不存在！"
+            ls -la app/build/outputs/apk/ || true
+            exit 1
+          fi
+
           echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
+          echo "build_type=$BUILD_TYPE" >> $GITHUB_OUTPUT
+
           ls -lh $APK_PATH
 
       - name: 📝 Rename APK
         run: |
-          BUILD_TYPE="${{ github.event.inputs.build_type }}"
+          BUILD_TYPE="${{ steps.build.outputs.build_type }}"
           if [ -z "$BUILD_TYPE" ]; then
             BUILD_TYPE="debug"
           fi
@@ -103,6 +123,7 @@ jobs:
           cp ${{ env.APK_PATH }} $NEW_NAME
           echo "NEW_APK_NAME=$NEW_NAME" >> $GITHUB_ENV
 
+          echo "重命名后的文件: $NEW_NAME"
           ls -lh $NEW_NAME
 
       - name: 📤 Upload APK artifact
@@ -114,19 +135,57 @@ jobs:
 
       - name: 📝 Create build report
         run: |
-          BUILD_TYPE="${{ github.event.inputs.build_type }}"
+          BUILD_TYPE="${{ steps.build.outputs.build_type }}"
           if [ -z "$BUILD_TYPE" ]; then
             BUILD_TYPE="debug"
           fi
 
           cat > build-report.md << EOF
           # Android APK 构建报告
-          
+
+          ## 📱 构建信息
+
           - **应用名称**: ProjectAccountingApp
+          - **包名**: com.anonymous.x7613422460242919487
+          - **版本**: 1.0.0
           - **构建类型**: $BUILD_TYPE
           - **构建时间**: $(date '+%Y-%m-%d %H:%M:%S')
+          - **触发方式**: ${{ github.event_name }}
           - **构建方式**: 本地构建（GitHub Actions + Gradle）
+
+          ## 📥 下载方式
+
+          ### GitHub Artifacts（推荐）
+
+          1. 访问此构建页面
+          2. 向下滚动到 "Artifacts" 部分
+          3. 下载 **${{ env.NEW_APK_NAME }}**
+
+          ## 📲 安装说明
+
+          1. 下载 APK 文件
+          2. 传输到 Android 手机
+          3. 在手机上点击 APK 文件安装
+          4. 允许安装未知来源应用
+
+          ## ✅ 功能验证
+
+          安装后请验证：
+          - [ ] 应用正常启动
+          - [ ] 项目管理功能正常
+          - [ ] 支出记录功能正常
+          - [ ] 收款/开票记录功能正常
+          - [ ] 数据导出/导入功能正常
+
+          ## 💡 数据备份
+
+          应用数据存储在本地，请定期使用"数据导出"功能备份数据。
+
+          ---
+          构建由 GitHub Actions 自动生成（本地构建模式）
           EOF
+
+          cat build-report.md
 
       - name: 📤 Upload build report
         uses: actions/upload-artifact@v4
@@ -134,3 +193,13 @@ jobs:
           name: build-report
           path: build-report.md
           retention-days: 30
+
+      - name: ✅ Build success
+        run: |
+          echo "========================================"
+          echo "  构建成功！"
+          echo "========================================"
+          echo "APK 文件: ${{ env.NEW_APK_NAME }}"
+          echo "构建类型: ${{ steps.build.outputs.build_type }}"
+          echo "下载位置: GitHub Actions → Artifacts"
+          echo "========================================"
