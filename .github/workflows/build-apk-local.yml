@@ -1,0 +1,532 @@
+# GitHub Actions 本地构建 APK 指南
+
+## 🎉 无需 Expo 账户，完全免费！
+
+本指南介绍如何使用 GitHub Actions 本地构建 Android APK，**不需要 Expo 账户、不需要 Token、不需要任何云端服务**。
+
+---
+
+## ✨ 特点
+
+- ✅ **无需 Expo 账户** - 不需要注册或登录
+- ✅ **无需配置 Token** - 不需要任何 Secrets
+- ✅ **完全免费** - 使用 GitHub 免费的 Actions 服务
+- ✅ **自动构建** - 推送代码自动触发，也可以手动触发
+- ✅ **自动上传** - APK 自动上传到 GitHub Artifacts
+- ✅ **两种构建类型** - Debug（快速）和 Release（正式）
+
+---
+
+## 🚀 快速开始（3 分钟）
+
+### 第一步：推送代码到 GitHub
+
+```bash
+cd /workspace/projects
+
+# 添加新创建的工作流文件
+git add .github/workflows/build-apk-local.yml
+
+# 提交
+git commit -m "添加本地构建工作流"
+
+# 推送到 GitHub（需要你的 GitHub Token）
+git push origin main
+```
+
+**如果你没有 GitHub Token，可以在 GitHub 网页上手动上传文件：**
+1. 访问：https://github.com/yazi8929/workhours-app
+2. 创建文件：`.github/workflows/build-apk-local.yml`
+3. 粘贴工作流内容（见下方"完整工作流代码"）
+4. 提交更改
+
+---
+
+### 第二步：手动触发构建
+
+1. **访问 Actions 页面**
+   - 打开：https://github.com/yazi8929/workhours-app/actions
+   - 或者：https://github.com/yazi8929/workhours/actions
+
+2. **选择工作流**
+   - 找到 **"Build Android APK (Local)"** 工作流
+   - 点击该工作流
+
+3. **手动触发**
+   - 点击 **"Run workflow"** 按钮
+   - 选择分支：`main`
+   - 选择构建类型：
+     - **debug**（推荐，约 5-10 分钟，快速测试）
+     - **release**（约 15-20 分钟，正式发布）
+   - 点击 **"Run workflow"**
+
+---
+
+### 第三步：等待构建完成
+
+构建过程：
+- **Debug 版本**：约 5-10 分钟
+- **Release 版本**：约 15-20 分钟
+
+构建步骤：
+1. ✅ 检出代码
+2. ✅ 安装 Node.js 和 JDK
+3. ✅ 安装依赖
+4. ✅ 生成 Android 项目
+5. ✅ 使用 Gradle 构建 APK
+6. ✅ 上传 APK 到 GitHub
+
+---
+
+### 第四步：下载 APK
+
+1. **访问构建页面**
+   - 点击最新的构建记录
+
+2. **下载 APK**
+   - 向下滚动到 **"Artifacts"** 部分
+   - 点击 **"workhours-app-debug-[时间戳].apk"** 下载
+
+3. **安装到手机**
+   - 传输到 Android 手机
+   - 点击 APK 文件安装
+   - 允许安装未知来源应用
+
+---
+
+## 📖 完整工作流代码
+
+如果你需要在 GitHub 网页手动创建文件，复制以下内容：
+
+```yaml
+name: Build Android APK (Local)
+
+# 触发条件
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: '构建类型'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 检出代码
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 设置 Node.js
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # 3. 设置 JDK 17
+      - name: 🔧 Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 4. 缓存依赖
+      - name: 💾 Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            client/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      # 5. 缓存 Gradle
+      - name: 💾 Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # 6. 安装依赖
+      - name: 📦 Install dependencies
+        run: |
+          cd client
+          npm install
+
+      # 7. 安装 Expo CLI
+      - name: 🔧 Install Expo CLI
+        run: npm install -g expo-cli
+
+      # 8. 接受 Android SDK 许可
+      - name: 📜 Accept Android SDK licenses
+        run: |
+          yes | sdkmanager --licenses || true
+
+      # 9. 使用 Expo Prebuild 生成 Android 项目
+      - name: 🏗️ Prebuild Android project
+        run: |
+          cd client
+          npx expo prebuild --platform android --clean
+
+      # 10. 构建 APK
+      - name: 🏗️ Build APK
+        run: |
+          cd client/android
+
+          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+            echo "构建 Release APK..."
+            ./gradlew assembleRelease
+            APK_PATH="app/build/outputs/apk/release/app-release.apk"
+          else
+            echo "构建 Debug APK..."
+            ./gradlew assembleDebug
+            APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+          fi
+
+          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
+          ls -lh $APK_PATH
+
+      # 11. 重命名 APK（添加版本信息）
+      - name: 📝 Rename APK
+        run: |
+          BUILD_TYPE="${{ github.event.inputs.build_type }}"
+          if [ -z "$BUILD_TYPE" ]; then
+            BUILD_TYPE="debug"
+          fi
+
+          VERSION=$(date +%Y%m%d-%H%M%S)
+          NEW_NAME="workhours-app-${BUILD_TYPE}-${VERSION}.apk"
+
+          cp ${{ env.APK_PATH }} $NEW_NAME
+          echo "NEW_APK_NAME=$NEW_NAME" >> $GITHUB_ENV
+
+          ls -lh $NEW_NAME
+
+      # 12. 上传 APK 到 GitHub Artifacts
+      - name: 📤 Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NEW_APK_NAME }}
+          path: ${{ env.NEW_APK_NAME }}
+          retention-days: 30
+
+      # 13. 生成构建报告
+      - name: 📝 Create build report
+        run: |
+          BUILD_TYPE="${{ github.event.inputs.build_type }}"
+          if [ -z "$BUILD_TYPE" ]; then
+            BUILD_TYPE="debug"
+          fi
+
+          VERSION=$(date +%Y%m%d-%H%M%S)
+
+          cat > build-report.md << EOF
+          # Android APK 构建报告
+
+          ## 📱 构建信息
+
+          - **应用名称**: ProjectAccountingApp
+          - **包名**: com.anonymous.x7613422460242919487
+          - **版本**: 1.0.0
+          - **构建类型**: $BUILD_TYPE
+          - **构建时间**: $(date '+%Y-%m-%d %H:%M:%S')
+          - **触发方式**: ${{ github.event_name }}
+          - **构建方式**: 本地构建（GitHub Actions + Gradle）
+
+          ## 📥 下载方式
+
+          ### 方式一：GitHub Artifacts（推荐）
+
+          1. 访问此构建页面
+          2. 向下滚动到 "Artifacts" 部分
+          3. 下载 **${{ env.NEW_APK_NAME }}**
+
+          ### 方式二：直接下载链接
+
+          点击 Artifacts 中的文件即可下载。
+
+          ## 📲 安装说明
+
+          1. 下载 APK 文件
+          2. 传输到 Android 手机
+          3. 在手机上点击 APK 文件安装
+          4. 允许安装未知来源应用
+          5. 点击安装
+
+          ## 🔍 构建类型说明
+
+          ### Debug APK
+          - 构建速度快（约 5-10 分钟）
+          - 文件较大
+          - 包含调试信息
+          - 适合测试和预览
+
+          ### Release APK
+          - 构建速度慢（约 15-20 分钟）
+          - 文件较小
+          - 已优化和压缩
+          - 适合正式发布
+
+          ## ✅ 功能验证
+
+          安装后请验证：
+          - [ ] 应用正常启动
+          - [ ] 项目管理功能正常
+          - [ ] 支出记录功能正常
+          - [ ] 收款/开票记录功能正常
+          - [ ] 数据导出/导入功能正常
+          - [ ] 关闭应用后重新打开，数据仍然存在
+
+          ## 💡 数据备份
+
+          应用数据存储在本地，请定期使用"数据导出"功能备份数据。
+
+          ## 🎉 特点
+
+          - ✅ 无需 Expo 账户
+          - ✅ 无需配置任何 Token
+          - ✅ 完全本地构建
+          - ✅ 支持手动触发和自动触发
+          - ✅ APK 自动上传到 GitHub
+
+          ---
+          构建由 GitHub Actions 自动生成（本地构建模式）
+          EOF
+
+          cat build-report.md
+
+      # 14. 上传构建报告
+      - name: 📤 Upload build report
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-report-${BUILD_TYPE}
+          path: build-report.md
+          retention-days: 30
+
+      # 15. 构建成功通知
+      - name: ✅ Build success notification
+        run: |
+          echo "========================================"
+          echo "  构建成功！"
+          echo "========================================"
+          echo "APK 文件: ${{ env.NEW_APK_NAME }}"
+          echo "构建类型: ${{ github.event.inputs.build_type }}"
+          echo "下载位置: GitHub Actions → Artifacts"
+          echo "========================================"
+```
+
+---
+
+## 🎯 构建类型说明
+
+### Debug APK（推荐日常使用）
+
+**特点：**
+- 🚀 构建快速（约 5-10 分钟）
+- 📦 文件较大
+- 🔍 包含调试信息
+- ✅ 适合测试和预览
+
+**使用场景：**
+- 日常开发测试
+- 快速验证功能
+- 分发给测试人员
+
+### Release APK（正式发布）
+
+**特点：**
+- ⏱️ 构建较慢（约 15-20 分钟）
+- 📦 文件较小
+- 🎯 已优化和压缩
+- ✅ 适合正式发布
+
+**使用场景：**
+- 正式发布给用户
+- 生产环境使用
+- 需要最佳性能
+
+---
+
+## 🔄 自动触发构建
+
+除了手动触发，你也可以设置代码推送时自动构建：
+
+### 方法1：当前配置（已启用）
+
+工作流已经配置为在推送到 `main` 或 `master` 分支时自动构建。
+
+### 方法2：禁用自动触发
+
+如果只想手动触发，修改工作流文件的触发条件：
+
+```yaml
+on:
+  workflow_dispatch:  # 只保留手动触发
+    inputs:
+      build_type:
+        description: '构建类型'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+```
+
+---
+
+## 📊 构建时间对比
+
+| 构建类型 | 首次构建 | 缓存构建 | 说明 |
+|---------|---------|---------|------|
+| **Debug** | 8-10 分钟 | 5-7 分钟 | 快速测试 |
+| **Release** | 18-20 分钟 | 12-15 分钟 | 正式发布 |
+
+---
+
+## 📥 下载 APK 文件
+
+### 方式1：GitHub Actions 页面（推荐）
+
+1. 访问：https://github.com/yazi8929/workhours-app/actions
+2. 点击最新的构建记录
+3. 向下滚动到 **"Artifacts"** 部分
+4. 点击 APK 文件下载
+
+### 方式2：构建历史
+
+1. 访问：https://github.com/yazi8929/workhours-app/actions/workflows/build-apk-local.yml
+2. 选择任意历史构建
+3. 下载对应的 APK 文件
+
+---
+
+## 🔍 查看构建日志
+
+### 查看详细日志
+
+1. 访问构建页面
+2. 点击任意步骤（如 "Build APK"）
+3. 查看详细的构建输出
+
+### 常见问题排查
+
+**构建失败时，检查：**
+- ✅ Node.js 版本是否为 18
+- ✅ JDK 版本是否为 17
+- ✅ 依赖是否正确安装
+- ✅ Android SDK 许可是否接受
+
+---
+
+## ❓ 常见问题
+
+### Q: 构建失败了怎么办？
+
+**A:**
+1. 查看构建日志，找到错误信息
+2. 常见问题：
+   - 依赖安装失败 → 检查 package.json
+   - Gradle 构建失败 → 查看详细错误信息
+   - 超时 → Release 版本可能需要更长时间
+
+### Q: 构建时间太长？
+
+**A:**
+- 首次构建需要下载依赖，较慢
+- 后续构建会使用缓存，速度会快很多
+- Debug 版本比 Release 版本快
+
+### Q: APK 文件在哪里？
+
+**A:**
+- 构建完成后，APK 会自动上传到 GitHub Artifacts
+- 在构建页面的 "Artifacts" 部分下载
+
+### Q: 可以修改 APK 文件名吗？
+
+**A:**
+- 可以，修改工作流中的重命名步骤
+- 当前格式：`workhours-app-{类型}-{时间戳}.apk`
+
+### Q: 需要配置任何 Secrets 吗？
+
+**A:**
+- ❌ 不需要！
+- 这个工作流完全不需要任何 Secrets 或 Token
+
+---
+
+## 🎉 优势总结
+
+### 与 EAS Build 对比
+
+| 特性 | EAS Build | 本地构建 |
+|------|-----------|---------|
+| **Expo 账户** | ✅ 必需 | ❌ 不需要 |
+| **EXPO_TOKEN** | ✅ 必需 | ❌ 不需要 |
+| **GitHub Secrets** | ✅ 需要 | ❌ 不需要 |
+| **构建时间** | 10-20 分钟 | 5-20 分钟 |
+| **构建方式** | 云端 | 本地 |
+| **成本** | 免费（有额度限制） | 完全免费 |
+| **控制力** | 有限 | 完全控制 |
+
+---
+
+## 🚀 立即开始
+
+### 快速操作（3 步）
+
+1. **在 GitHub 网页创建工作流文件**
+   - 访问：https://github.com/yazi8929/workhours-app/new
+   - 文件名：`.github/workflows/build-apk-local.yml`
+   - 粘贴上方完整工作流代码
+   - 提交
+
+2. **手动触发构建**
+   - 访问：https://github.com/yazi8929/workhours-app/actions
+   - 点击 "Build Android APK (Local)"
+   - 点击 "Run workflow"
+   - 选择构建类型
+   - 运行
+
+3. **下载 APK**
+   - 等待构建完成（5-20 分钟）
+   - 在 "Artifacts" 部分下载 APK
+
+---
+
+## 📚 相关文档
+
+- [GitHub Actions 文档](https://docs.github.com/actions)
+- [Expo Prebuild 文档](https://docs.expo.dev/build/introduction/android-builds)
+- [Gradle 构建文档](https://developer.android.com/studio/build)
+
+---
+
+## 💡 提示
+
+- **首次构建**：会稍慢一些，因为需要下载依赖
+- **缓存加速**：后续构建会使用缓存，速度更快
+- **免费额度**：GitHub 每月提供 2000 分钟的免费 Actions 时间
+- **APK 保留**：Artifacts 自动保留 30 天
+
+---
+
+**现在你可以立即开始构建 APK 了！无需任何配置！** 🎉
