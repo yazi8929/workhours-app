@@ -71,7 +71,10 @@ jobs:
       - name: 🏗️ Prebuild Android project
         run: |
           cd client
+          echo "开始 Expo Prebuild..."
           npx expo prebuild --platform android --clean
+          echo "Prebuild 完成"
+          ls -la android/ || echo "android 目录不存在"
 
       - name: 🏗️ Build APK
         id: build
@@ -84,23 +87,42 @@ jobs:
             BUILD_TYPE="debug"
           fi
 
+          echo "=========================================="
           echo "构建类型: $BUILD_TYPE"
+          echo "=========================================="
+          echo "当前目录: $(pwd)"
+          echo "Gradle 版本:"
+          ./gradlew --version
+          echo "=========================================="
+
+          # 检查项目结构
+          echo "检查项目结构..."
+          ls -la app/build.gradle || echo "app/build.gradle 不存在"
+          ls -la settings.gradle || echo "settings.gradle 不存在"
 
           if [ "$BUILD_TYPE" = "release" ]; then
             echo "构建 Release APK..."
-            ./gradlew assembleRelease
+            ./gradlew assembleRelease --stacktrace --info || true
             APK_PATH="app/build/outputs/apk/release/app-release.apk"
           else
             echo "构建 Debug APK..."
-            ./gradlew assembleDebug
+            ./gradlew assembleDebug --stacktrace --info || true
             APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
           fi
 
-          echo "APK路径: $APK_PATH"
+          echo "=========================================="
+          echo "查找生成的 APK 文件..."
+          echo "=========================================="
+          find app/build/outputs -name "*.apk" -type f || echo "未找到 APK 文件"
+
+          echo "=========================================="
+          echo "检查 APK 路径: $APK_PATH"
+          echo "=========================================="
 
           # 检查 APK 文件是否存在
           if [ ! -f "$APK_PATH" ]; then
             echo "错误: APK 文件不存在！"
+            echo "输出目录内容:"
             ls -la app/build/outputs/apk/ || true
             exit 1
           fi
