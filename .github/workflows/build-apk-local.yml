@@ -100,13 +100,14 @@ jobs:
           ls -la app/build.gradle || echo "app/build.gradle 不存在"
           ls -la settings.gradle || echo "settings.gradle 不存在"
 
+          # 构建 APK（现在会显示真实的构建错误）
           if [ "$BUILD_TYPE" = "release" ]; then
             echo "构建 Release APK..."
-            ./gradlew assembleRelease --stacktrace --info || true
+            ./gradlew assembleRelease --stacktrace
             APK_PATH="app/build/outputs/apk/release/app-release.apk"
           else
             echo "构建 Debug APK..."
-            ./gradlew assembleDebug --stacktrace --info || true
+            ./gradlew assembleDebug --stacktrace
             APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
           fi
 
@@ -123,7 +124,7 @@ jobs:
           if [ ! -f "$APK_PATH" ]; then
             echo "错误: APK 文件不存在！"
             echo "输出目录内容:"
-            ls -la app/build/outputs/apk/ || true
+            ls -laR app/build/outputs/ || true
             exit 1
           fi
 
