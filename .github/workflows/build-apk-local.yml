@@ -68,10 +68,11 @@ jobs:
           echo "构建类型: $BUILD_TYPE"
 
           # 构建 APK
+          # 注意：Debug APK 也打包 JavaScript bundle，使其可以独立运行
           if [ "$BUILD_TYPE" = "release" ]; then
             ./gradlew assembleRelease --stacktrace
           else
-            ./gradlew assembleDebug --stacktrace
+            ./gradlew assembleDebug -PbundleInDebug=true --stacktrace
           fi
 
           BUILD_STATUS=$?
@@ -80,26 +81,28 @@ jobs:
             exit 1
           fi
 
-          # 查找 APK 文件
+          # 查找 APK 文件并获取绝对路径
           echo "查找 APK 文件..."
           find app/build -name "*.apk" -type f
 
-          # 设置 APK 路径
-          APK_PATH=$(find app/build -name "*.apk" -type f | head -n 1)
+          APK_RELATIVE_PATH=$(find app/build -name "*.apk" -type f | head -n 1)
 
-          if [ -z "$APK_PATH" ]; then
+          if [ -z "$APK_RELATIVE_PATH" ]; then
             echo "错误: 未找到 APK 文件"
             echo "列出 app/build 目录结构："
             ls -laR app/build/ || true
             exit 1
           fi
 
-          # 设置输出变量
-          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
+          # 获取绝对路径
+          APK_ABSOLUTE_PATH="$(cd "$(dirname "$APK_RELATIVE_PATH")" && pwd)/$(basename "$APK_RELATIVE_PATH")"
+
+          # 设置输出变量（使用绝对路径）
+          echo "APK_PATH=$APK_ABSOLUTE_PATH" >> $GITHUB_OUTPUT
           echo "BUILD_TYPE=$BUILD_TYPE" >> $GITHUB_OUTPUT
 
-          echo "APK 构建成功: $APK_PATH"
-          ls -lh $APK_PATH
+          echo "APK 构建成功: $APK_ABSOLUTE_PATH"
+          ls -lh $APK_ABSOLUTE_PATH
 
       - name: 📝 Rename APK
         run: |
@@ -107,11 +110,18 @@ jobs:
           VERSION=$(date +%Y%m%d-%H%M%S)
           NEW_NAME="workhours-app-${BUILD_TYPE}-${VERSION}.apk"
 
-          cp ${{ env.APK_PATH }} $NEW_NAME
+          # APK 路径从构建步骤获取
+          APK_PATH="${{ steps.build.outputs.APK_PATH }}"
+
+          echo "APK 路径: $APK_PATH"
+          echo "新文件名: $NEW_NAME"
+
+          # 复制 APK 并重命名
+          cp "$APK_PATH" "$NEW_NAME"
           echo "NEW_APK_NAME=$NEW_NAME" >> $GITHUB_ENV
 
-          echo "重命名: $NEW_NAME"
-          ls -lh $NEW_NAME
+          echo "重命名成功: $NEW_NAME"
+          ls -lh "$NEW_NAME"
 
       - name: 📤 Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -158,16 +168,20 @@ jobs:
           ## 🔍 构建类型说明
 
           ### Debug APK
-          - 构建速度快（约 10-15 分钟）
-          - 文件较大
-          - 包含调试信息
+          - 构建速度中等（约 15-20 分钟）
+          - 文件较大（约 20-30 MB）
+          - **已打包 JavaScript bundle，可独立运行**
           - 适合测试和预览
+          - **无需开发服务器，直接安装即可使用**
 
           ### Release APK
           - 构建速度慢（约 20-30 分钟）
-          - 文件较小
+          - 文件较小（约 15-25 MB）
           - 已优化和压缩
           - 适合正式发布
+          - **无需开发服务器，直接安装即可使用**
+
+          > **注意**：两种构建类型都已经内置 JavaScript bundle，可以直接安装使用，无需任何额外配置。
 
           ## ✅ 功能验证
 
@@ -191,6 +205,7 @@ jobs:
           - ✅ 支持手动触发和自动触发
           - ✅ APK 自动上传到 GitHub
           - ✅ 自动生成构建报告
+          - ✅ Debug APK 可独立运行（无需开发服务器）
 
           ---
           构建由 GitHub Actions 自动生成（本地构建模式）
