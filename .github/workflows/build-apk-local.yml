@@ -69,27 +69,28 @@ jobs:
 
           # 构建 APK
           if [ "$BUILD_TYPE" = "release" ]; then
-            ./gradlew assembleRelease
-            BUILD_STATUS=$?
-            if [ $BUILD_STATUS -ne 0 ]; then
-              echo "Release 构建失败！"
-              exit 1
-            fi
-            APK_PATH="app/build/outputs/apk/release/app-release.apk"
+            ./gradlew assembleRelease --stacktrace
           else
-            ./gradlew assembleDebug
-            BUILD_STATUS=$?
-            if [ $BUILD_STATUS -ne 0 ]; then
-              echo "Debug 构建失败！"
-              exit 1
-            fi
-            APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+            ./gradlew assembleDebug --stacktrace
           fi
 
-          # 检查 APK 是否存在
-          if [ ! -f "$APK_PATH" ]; then
-            echo "错误: APK 文件不存在于 $APK_PATH"
-            ls -laR app/build/outputs/ || true
+          BUILD_STATUS=$?
+          if [ $BUILD_STATUS -ne 0 ]; then
+            echo "构建失败！"
+            exit 1
+          fi
+
+          # 查找 APK 文件
+          echo "查找 APK 文件..."
+          find app/build -name "*.apk" -type f
+
+          # 设置 APK 路径
+          APK_PATH=$(find app/build -name "*.apk" -type f | head -n 1)
+
+          if [ -z "$APK_PATH" ]; then
+            echo "错误: 未找到 APK 文件"
+            echo "列出 app/build 目录结构："
+            ls -laR app/build/ || true
             exit 1
           fi
 
