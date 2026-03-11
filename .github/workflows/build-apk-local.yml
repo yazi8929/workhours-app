@@ -67,17 +67,20 @@ jobs:
 
           echo "构建类型: $BUILD_TYPE"
 
+          # 设置 Gradle 内存选项
+          export GRADLE_OPTS="-Xmx4g -Xms2g -XX:MaxMetaspaceSize=512m"
+
           # 构建 APK
           # 注意：Debug APK 也打包 JavaScript bundle，使其可以独立运行
           if [ "$BUILD_TYPE" = "release" ]; then
-            ./gradlew assembleRelease --stacktrace
+            ./gradlew assembleRelease --stacktrace --info
           else
-            ./gradlew assembleDebug -PbundleInDebug=true --stacktrace
+            ./gradlew assembleDebug -PbundleInDebug=true --stacktrace --info
           fi
 
           BUILD_STATUS=$?
           if [ $BUILD_STATUS -ne 0 ]; then
-            echo "构建失败！"
+            echo "构建失败！构建状态: $BUILD_STATUS"
             exit 1
           fi
 
@@ -205,7 +208,6 @@ jobs:
           - ✅ 支持手动触发和自动触发
           - ✅ APK 自动上传到 GitHub
           - ✅ 自动生成构建报告
-          - ✅ Debug APK 可独立运行（无需开发服务器）
 
           ---
           构建由 GitHub Actions 自动生成（本地构建模式）
