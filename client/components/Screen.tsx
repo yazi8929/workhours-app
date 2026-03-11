@@ -1,10 +1,11 @@
+```typescript
 import React, { useEffect } from 'react';
 import {
   Platform,
   StyleSheet,
   ScrollView,
   View,
-  TouchableWithoutFeedback,
+  TouchableOpacity,
   Keyboard,
   ViewStyle,
   FlatList,
@@ -168,7 +169,7 @@ export const Screen = ({
       // 不递归检查 Modal 内容，避免将弹窗内的 ScrollView 误判为页面已具备垂直滚动
       if (t === Modal) return false;
       const props = element.props as Record<string, unknown> | undefined;
-      // 仅识别“垂直”滚动容器；横向滚动不视为页面已处理垂直滚动
+      // 仅识别"垂直"滚动容器；横向滚动不视为页面已处理垂直滚动
       // eslint-disable-next-line react/prop-types
       const isHorizontal = !!(props && (props as any).horizontal === true);
       if ((t === ScrollView || t === FlatList || t === SectionList) && !isHorizontal) return true;
@@ -209,7 +210,7 @@ export const Screen = ({
       : 0,
   };
 
-  // 若子树不可滚动，则外层使用 KeyboardAwareScrollView 提供“全局页面滑动”能力
+  // 若子树不可滚动，则外层使用 KeyboardAwareScrollView 提供"全局页面滑动"能力
   const useScrollContainer = !childIsNativeScrollable;
 
   // 2. 滚动容器配置
@@ -294,11 +295,16 @@ export const Screen = ({
             {wrapScrollableWithKeyboardAvoid(children)}
           </View>
         ) : (
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} disabled={Platform.OS === 'web'}>
+          <TouchableOpacity
+            onPress={Keyboard.dismiss}
+            disabled={Platform.OS === 'web'}
+            activeOpacity={1}
+            style={{ flex: 1 }}
+          >
             <View style={[styles.innerContainer, style]}>
               {children}
             </View>
-          </TouchableWithoutFeedback>
+          </TouchableOpacity>
         )
       )}
     </View>
@@ -312,3 +318,4 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
 });
+```
