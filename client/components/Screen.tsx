@@ -1,4 +1,3 @@
-```typescript
 import React, { useEffect } from 'react';
 import {
   Platform,
@@ -299,7 +298,7 @@ export const Screen = ({
             onPress={Keyboard.dismiss}
             disabled={Platform.OS === 'web'}
             activeOpacity={1}
-            style={{ flex: 1 }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           >
             <View style={[styles.innerContainer, style]}>
               {children}
@@ -318,4 +317,3 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
 });
-```
