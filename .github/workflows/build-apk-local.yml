@@ -1,4 +1,4 @@
-name: Build Android APK (Local)
+name: Build Android APK
 
 on:
   push:
@@ -6,15 +6,6 @@ on:
       - main
       - master
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: '构建类型'
-        required: true
-        default: 'debug'
-        type: choice
-        options:
-          - debug
-          - release
 
 jobs:
   build:
@@ -22,74 +13,43 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: 🔧 Setup Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: 🔧 Set up JDK 17
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: |
           cd client
           npm install
 
-      - name: 📜 Accept Android SDK licenses
-        run: |
-          yes | sdkmanager --licenses || true
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
 
-      - name: 🏗️ Prebuild Android project
+      - name: Prebuild Android project
         run: |
           cd client
           npx expo prebuild --platform android --clean
 
-      - name: 🏗️ Build APK
-        id: build
+      - name: Build APK
         run: |
           cd client/android
           chmod +x gradlew
-          
-          BUILD_TYPE="${{ github.event.inputs.build_type }}"
-          if [ -z "$BUILD_TYPE" ]; then
-            BUILD_TYPE="debug"
-          fi
-          
-          export GRADLE_OPTS="-Xmx6g -Xms2g -XX:MaxMetaspaceSize=1g"
-          export NODE_OPTIONS="--max-old-space-size=8192"
-          
-          if [ "$BUILD_TYPE" = "release" ]; then
-            ./gradlew assembleRelease --stacktrace 2>&1 | tee build.log
-          else
-            ./gradlew assembleDebug -PbundleInDebug=true --stacktrace 2>&1 | tee build.log
-          fi
-          
-          if [ $? -ne 0 ]; then
-            tail -n 200 build.log
-            exit 1
-          fi
-          
-          APK_PATH=$(find app/build -name "*.apk" -type f | head -n 1)
-          echo "APK_PATH=$APK_PATH" >> $GITHUB_OUTPUT
-          echo "BUILD_TYPE=$BUILD_TYPE" >> $GITHUB_OUTPUT
+          export GRADLE_OPTS="-Xmx6g -Xms2g"
+          ./gradlew assembleDebug -PbundleInDebug=true --stacktrace
 
-      - name: 📝 Rename APK
-        run: |
-          BUILD_TYPE="${{ steps.build.outputs.BUILD_TYPE }}"
-          VERSION=$(date +%Y%m%d-%H%M%S)
-          NEW_NAME="workhours-app-${BUILD_TYPE}-${VERSION}.apk"
-          cp "${{ steps.build.outputs.APK_PATH }}" "$NEW_NAME"
-          echo "NEW_APK_NAME=$NEW_NAME" >> $GITHUB_ENV
-
-      - name: 📤 Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.NEW_APK_NAME }}
-          path: ${{ env.NEW_APK_NAME }}
+          name: workhours-app-debug
+          path: client/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
