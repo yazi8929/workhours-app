@@ -28,7 +28,7 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: 🔧 Set up JDK 17
         uses: actions/setup-java@v4
@@ -40,9 +40,6 @@ jobs:
         run: |
           cd client
           npm install
-
-      - name: 🔧 Install Expo CLI
-        run: npm install -g expo-cli
 
       - name: 📜 Accept Android SDK licenses
         run: |
@@ -58,73 +55,37 @@ jobs:
         run: |
           cd client/android
           chmod +x gradlew
-
-          # 设置构建类型（默认 debug）
+          
           BUILD_TYPE="${{ github.event.inputs.build_type }}"
           if [ -z "$BUILD_TYPE" ]; then
             BUILD_TYPE="debug"
           fi
-
-          echo "构建类型: $BUILD_TYPE"
-
-          # 设置 Gradle 内存选项
-          export GRADLE_OPTS="-Xmx4g -Xms2g -XX:MaxMetaspaceSize=512m"
-
-          # 构建 APK
-          # 注意：Debug APK 也打包 JavaScript bundle，使其可以独立运行
+          
+          export GRADLE_OPTS="-Xmx6g -Xms2g -XX:MaxMetaspaceSize=1g"
+          export NODE_OPTIONS="--max-old-space-size=8192"
+          
           if [ "$BUILD_TYPE" = "release" ]; then
-            ./gradlew assembleRelease --stacktrace --info
+            ./gradlew assembleRelease --stacktrace 2>&1 | tee build.log
           else
-            ./gradlew assembleDebug -PbundleInDebug=true --stacktrace --info
+            ./gradlew assembleDebug -PbundleInDebug=true --stacktrace 2>&1 | tee build.log
           fi
-
-          BUILD_STATUS=$?
-          if [ $BUILD_STATUS -ne 0 ]; then
-            echo "构建失败！构建状态: $BUILD_STATUS"
+          
+          if [ $? -ne 0 ]; then
+            tail -n 200 build.log
             exit 1
           fi
-
-          # 查找 APK 文件并获取绝对路径
-          echo "查找 APK 文件..."
-          find app/build -name "*.apk" -type f
-
-          APK_RELATIVE_PATH=$(find app/build -name "*.apk" -type f | head -n 1)
-
-          if [ -z "$APK_RELATIVE_PATH" ]; then
-            echo "错误: 未找到 APK 文件"
-            echo "列出 app/build 目录结构："
-            ls -laR app/build/ || true
-            exit 1
-          fi
-
-          # 获取绝对路径
-          APK_ABSOLUTE_PATH="$(cd "$(dirname "$APK_RELATIVE_PATH")" && pwd)/$(basename "$APK_RELATIVE_PATH")"
-
-          # 设置输出变量（使用绝对路径）
-          echo "APK_PATH=$APK_ABSOLUTE_PATH" >> $GITHUB_OUTPUT
+          
+          APK_PATH=$(find app/build -name "*.apk" -type f | head -n 1)
+          echo "APK_PATH=$APK_PATH" >> $GITHUB_OUTPUT
           echo "BUILD_TYPE=$BUILD_TYPE" >> $GITHUB_OUTPUT
-
-          echo "APK 构建成功: $APK_ABSOLUTE_PATH"
-          ls -lh $APK_ABSOLUTE_PATH
 
       - name: 📝 Rename APK
         run: |
           BUILD_TYPE="${{ steps.build.outputs.BUILD_TYPE }}"
           VERSION=$(date +%Y%m%d-%H%M%S)
           NEW_NAME="workhours-app-${BUILD_TYPE}-${VERSION}.apk"
-
-          # APK 路径从构建步骤获取
-          APK_PATH="${{ steps.build.outputs.APK_PATH }}"
-
-          echo "APK 路径: $APK_PATH"
-          echo "新文件名: $NEW_NAME"
-
-          # 复制 APK 并重命名
-          cp "$APK_PATH" "$NEW_NAME"
+          cp "${{ steps.build.outputs.APK_PATH }}" "$NEW_NAME"
           echo "NEW_APK_NAME=$NEW_NAME" >> $GITHUB_ENV
-
-          echo "重命名成功: $NEW_NAME"
-          ls -lh "$NEW_NAME"
 
       - name: 📤 Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -132,102 +93,3 @@ jobs:
           name: ${{ env.NEW_APK_NAME }}
           path: ${{ env.NEW_APK_NAME }}
           retention-days: 30
-
-      - name: 📝 Create build report
-        run: |
-          BUILD_TYPE="${{ steps.build.outputs.BUILD_TYPE }}"
-          VERSION=$(date +%Y%m%d-%H%M%S)
-
-          cat > build-report.md << EOF
-          # Android APK 构建报告
-
-          ## 📱 构建信息
-
-          - **应用名称**: ProjectAccountingApp
-          - **包名**: com.anonymous.x7613422460242919487
-          - **版本**: 1.0.0
-          - **构建类型**: $BUILD_TYPE
-          - **构建时间**: $(date '+%Y-%m-%d %H:%M:%S')
-          - **版本号**: $VERSION
-          - **触发方式**: ${{ github.event_name }}
-          - **构建方式**: 本地构建（GitHub Actions + Gradle）
-
-          ## 📥 下载方式
-
-          ### GitHub Artifacts（推荐）
-
-          1. 访问此构建页面
-          2. 向下滚动到 "Artifacts" 部分
-          3. 下载 **${{ env.NEW_APK_NAME }}**
-
-          ## 📲 安装说明
-
-          1. 下载 APK 文件
-          2. 传输到 Android 手机
-          3. 在手机上点击 APK 文件安装
-          4. 允许安装未知来源应用
-          5. 点击安装
-
-          ## 🔍 构建类型说明
-
-          ### Debug APK
-          - 构建速度中等（约 15-20 分钟）
-          - 文件较大（约 20-30 MB）
-          - **已打包 JavaScript bundle，可独立运行**
-          - 适合测试和预览
-          - **无需开发服务器，直接安装即可使用**
-
-          ### Release APK
-          - 构建速度慢（约 20-30 分钟）
-          - 文件较小（约 15-25 MB）
-          - 已优化和压缩
-          - 适合正式发布
-          - **无需开发服务器，直接安装即可使用**
-
-          > **注意**：两种构建类型都已经内置 JavaScript bundle，可以直接安装使用，无需任何额外配置。
-
-          ## ✅ 功能验证
-
-          安装后请验证：
-          - [ ] 应用正常启动
-          - [ ] 项目管理功能正常
-          - [ ] 支出记录功能正常
-          - [ ] 收款/开票记录功能正常
-          - [ ] 数据导出/导入功能正常
-          - [ ] 关闭应用后重新打开，数据仍然存在
-
-          ## 💡 数据备份
-
-          应用数据存储在本地，请定期使用"数据导出"功能备份数据。
-
-          ## 🎉 特点
-
-          - ✅ 无需 Expo 账户
-          - ✅ 无需配置任何 Token
-          - ✅ 完全本地构建
-          - ✅ 支持手动触发和自动触发
-          - ✅ APK 自动上传到 GitHub
-          - ✅ 自动生成构建报告
-
-          ---
-          构建由 GitHub Actions 自动生成（本地构建模式）
-          EOF
-
-          cat build-report.md
-
-      - name: 📤 Upload build report
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-report-${{ steps.build.outputs.BUILD_TYPE }}
-          path: build-report.md
-          retention-days: 30
-
-      - name: ✅ Build success
-        run: |
-          echo "========================================"
-          echo "  构建成功！"
-          echo "========================================"
-          echo "APK 文件: ${{ env.NEW_APK_NAME }}"
-          echo "构建类型: ${{ steps.build.outputs.BUILD_TYPE }}"
-          echo "下载位置: GitHub Actions → Artifacts"
-          echo "========================================"
