@@ -41,21 +41,45 @@ jobs:
           npx expo prebuild --platform android --clean
 
       - name: Build APK
+        id: build
+        continue-on-error: true
         run: |
           cd client/android
           chmod +x gradlew
           export GRADLE_OPTS="-Xmx6g -Xms2g"
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+      - name: Show build errors
+        if: steps.build.outputs.exit_code != '0'
+        run: |
+          echo "=========================================="
+          echo "BUILD FAILED - SEARCHING FOR ERRORS..."
+          echo "=========================================="
+          echo ""
+          echo "--- Lines containing 'error:' ---"
+          grep -i "error:" client/android/build.log || echo "No 'error:' found"
+          echo ""
+          echo "--- Lines containing 'failed:' ---"
+          grep -i "failed" client/android/build.log || echo "No 'failed' found"
+          echo ""
+          echo "--- Lines containing 'exception:' ---"
+          grep -i "exception" client/android/build.log || echo "No 'exception' found"
+          echo ""
+          echo "--- Lines containing 'Could not' ---"
+          grep -i "Could not" client/android/build.log || echo "No 'Could not' found"
+          echo ""
+          echo "--- Last 50 lines ---"
+          tail -n 50 client/android/build.log
+          echo ""
+          echo "=========================================="
+          exit 1
 
       - name: Find APK files
+        if: always()
         run: |
           echo "Searching for APK files..."
           find client/android -name "*.apk" || echo "No APK files found"
-          echo ""
-          echo "Listing build outputs directory..."
-          ls -la client/android/app/build/outputs/ 2>/dev/null || echo "No outputs directory"
-          ls -la client/android/app/build/outputs/apk/ 2>/dev/null || echo "No apk directory"
-          ls -la client/android/app/build/outputs/apk/debug/ 2>/dev/null || echo "No debug directory"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
