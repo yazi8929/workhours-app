@@ -14,7 +14,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,  // ← 改为 false
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true
     },
@@ -33,34 +33,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     "plugins": [
       'expo-router',
       [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "photosPermission": `允许ProjectAccountingApp访问您的相册，以便您上传或保存图片。`,
           "cameraPermission": `允许ProjectAccountingApp使用您的相机，以便您直接拍摄照片上传。`,
           "microphonePermission": `允许ProjectAccountingApp访问您的麦克风，以便您拍摄带有声音的视频。`
-        }
-      ],
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": `ProjectAccountingApp需要访问您的位置以提供周边服务及导航功能。`
-        }
-      ],
-      [
-        "expo-camera",
-        {
-          "cameraPermission": `ProjectAccountingApp需要访问相机以拍摄照片和视频。`,
-          "microphonePermission": `ProjectAccountingApp需要访问麦克风以录制视频声音。`,
-          "recordAudioAndroid": true
         }
       ],
       "@react-native-community/datetimepicker"
