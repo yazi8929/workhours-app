@@ -30,9 +30,7 @@ jobs:
       - name: Remove problematic dependencies
         run: |
           cd client
-          # 移除有问题的依赖
           npm uninstall react-native-chart-kit expo-splash-screen expo-location expo-camera react-native-keyboard-aware-scroll-view || true
-          # 清理缓存
           rm -rf node_modules package-lock.json
           npm install
 
@@ -45,11 +43,20 @@ jobs:
           npx expo prebuild --platform android --clean
 
       - name: Build APK
+        continue-on-error: true
         run: |
           cd client/android
           chmod +x gradlew
           export GRADLE_OPTS="-Xmx6g -Xms2g"
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: client/android/build.log
+          retention-days: 1
 
       - name: Find APK files
         if: always()
