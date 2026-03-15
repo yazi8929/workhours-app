@@ -30,9 +30,25 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses || true
 
+      - name: Fix package.json dependencies
+        run: |
+          cd client
+          # 强制修改 react-native-reanimated 版本为 3.15.0（支持旧架构）
+          sed -i 's/"react-native-reanimated": *"[^"]*"/"react-native-reanimated": "3.15.0"/g' package.json
+          # 移除有问题的依赖
+          sed -i '/react-native-chart-kit/d' package.json
+          sed -i '/expo-splash-screen/d' package.json
+          sed -i '/expo-location/d' package.json
+          sed -i '/expo-camera/d' package.json
+          sed -i '/react-native-keyboard-aware-scroll-view/d' package.json
+          sed -i '/react-native-worklets/d' package.json
+          echo "=== Fixed dependencies ==="
+          cat package.json | grep -A 5 "react-native-reanimated"
+          
       - name: Install dependencies
         run: |
           cd client
+          rm -rf node_modules package-lock.json
           npm install
 
       - name: Prebuild Android project
@@ -41,18 +57,38 @@ jobs:
           npx expo prebuild --platform android --clean
 
       - name: Build Release APK
+        id: build
+        continue-on-error: true
         run: |
           cd client/android
           chmod +x gradlew
           export GRADLE_OPTS="-Xmx6g -Xms2g"
-          ./gradlew assembleRelease --stacktrace
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee build.log
+
+      - name: Show build errors
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "=========================================="
+          echo "BUILD FAILED - ERROR DETAILS:"
+          echo "=========================================="
+          grep -A 5 "FAILURE\|What went wrong\|Execution failed\|Caused by" client/android/build.log | head -n 50
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: client/android/build.log
+          retention-days: 1
+
+      - name: Fail if build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
 
       - name: Find APK files
         if: always()
         run: |
-          echo "=========================================="
           echo "Searching for APK files..."
-          echo "=========================================="
           find client/android -name "*.apk" 2>/dev/null || echo "No APK files found"
 
       - name: Upload APK
