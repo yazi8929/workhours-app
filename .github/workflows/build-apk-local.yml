@@ -50,6 +50,14 @@ jobs:
           rm -rf node_modules package-lock.json
           npm install
 
+      - name: Create node_modules symlink for Metro
+        run: |
+          # Metro bundler 在项目根目录查找 node_modules
+          # 创建符号链接指向 client/node_modules
+          ln -s client/node_modules node_modules
+          echo "Created node_modules symlink"
+          ls -la node_modules | head -5
+
       - name: Prebuild Android project
         run: |
           cd client
