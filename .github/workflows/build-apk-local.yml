@@ -27,33 +27,25 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Fix dependencies for old architecture
-        run: |
-          cd client
-          # 移除需要新架构的 react-native-reanimated 4.x
-          npm uninstall react-native-reanimated react-native-worklets
-          # 安装支持旧架构的 react-native-reanimated 3.x
-          npm install react-native-reanimated@3.15.0
-          # 移除其他有问题的依赖
-          npm uninstall react-native-chart-kit expo-splash-screen expo-location expo-camera react-native-keyboard-aware-scroll-view || true
-          # 清理缓存
-          rm -rf node_modules package-lock.json
-          npm install
-
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses || true
+
+      - name: Install dependencies
+        run: |
+          cd client
+          npm install
 
       - name: Prebuild Android project
         run: |
           cd client
           npx expo prebuild --platform android --clean
 
-      - name: Build APK
+      - name: Build Release APK
         run: |
           cd client/android
           chmod +x gradlew
           export GRADLE_OPTS="-Xmx6g -Xms2g"
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleRelease --stacktrace
 
       - name: Find APK files
         if: always()
@@ -62,17 +54,14 @@ jobs:
           echo "Searching for APK files..."
           echo "=========================================="
           find client/android -name "*.apk" 2>/dev/null || echo "No APK files found"
-          echo ""
-          echo "Listing all files in app/build/outputs:"
-          ls -laR client/android/app/build/outputs/ 2>/dev/null || echo "No outputs directory"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: workhours-app-debug
+          name: workhours-app-release
           path: |
+            client/android/app/build/outputs/apk/release/*.apk
             client/android/app/build/outputs/apk/**/*.apk
-            client/android/**/*.apk
           retention-days: 30
           if-no-files-found: warn
