@@ -71,11 +71,56 @@ jobs:
           cd client
           npx expo prebuild --platform android --clean
 
+      - name: Debug Android directory
+        run: |
+          echo "=== Listing client/android directory ==="
+          ls -la client/android/
+          echo "=== Checking gradlew file ==="
+          file client/android/gradlew || echo "gradlew not found"
+          head -5 client/android/gradlew || echo "Cannot read gradlew"
+
       - name: Build Release APK
         id: build
         continue-on-error: true
+        working-directory: client/android
         run: |
-          cd client/android
           chmod +x gradlew
           export GRADLE_OPTS="-Xmx6g -Xms2g"
-          ./g
+          bash gradlew assembleRelease --stacktrace 2>&1 | tee build.log
+
+      - name: Show build errors
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "=========================================="
+          echo "BUILD FAILED - ERROR DETAILS:"
+          echo "=========================================="
+          grep -A 5 "FAILURE\|What went wrong\|Execution failed\|Caused by" client/android/build.log | head -n 50
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: client/android/build.log
+          retention-days: 1
+
+      - name: Fail if build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
+
+      - name: Find APK files
+        if: always()
+        run: |
+          echo "Searching for APK files..."
+          find client/android -name "*.apk" 2>/dev/null || echo "No APK files found"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workhours-app-release
+          path: |
+            client/android/app/build/outputs/apk/release/*.apk
+            client/android/app/build/outputs/apk/**/*.apk
+          retention-days: 30
+          if-no-files-found: warn
