@@ -44,6 +44,14 @@ jobs:
           echo "=== Fixed package.json ==="
           cat package.json | grep -A 50 '"dependencies"'
           
+      - name: Fix babel.config.js
+        run: |
+          cd client
+          # 移除 react-native-reanimated/plugin
+          sed -i "/react-native-reanimated\/plugin/d" babel.config.js
+          echo "=== Fixed babel.config.js ==="
+          cat babel.config.js
+
       - name: Install dependencies
         run: |
           cd client
@@ -70,41 +78,4 @@ jobs:
           cd client/android
           chmod +x gradlew
           export GRADLE_OPTS="-Xmx6g -Xms2g"
-          ./gradlew assembleRelease --stacktrace 2>&1 | tee build.log
-
-      - name: Show build errors
-        if: steps.build.outcome == 'failure'
-        run: |
-          echo "=========================================="
-          echo "BUILD FAILED - ERROR DETAILS:"
-          echo "=========================================="
-          grep -A 5 "FAILURE\|What went wrong\|Execution failed\|Caused by" client/android/build.log | head -n 50
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: client/android/build.log
-          retention-days: 1
-
-      - name: Fail if build failed
-        if: steps.build.outcome == 'failure'
-        run: exit 1
-
-      - name: Find APK files
-        if: always()
-        run: |
-          echo "Searching for APK files..."
-          find client/android -name "*.apk" 2>/dev/null || echo "No APK files found"
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: workhours-app-release
-          path: |
-            client/android/app/build/outputs/apk/release/*.apk
-            client/android/app/build/outputs/apk/**/*.apk
-          retention-days: 30
-          if-no-files-found: warn
+          ./g
