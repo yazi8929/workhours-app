@@ -17,7 +17,7 @@ export function generateUUID(): string {
  */
 export function formatCurrency(amount: number | undefined | null): string {
   const value = amount ?? 0;
-  return `¥${value.toFixed(2)}`;
+  return `¥${Math.round(value)}`;
 }
 
 /**
