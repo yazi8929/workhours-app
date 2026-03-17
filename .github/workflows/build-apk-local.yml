@@ -33,10 +33,9 @@ jobs:
       - name: Fix package.json dependencies
         run: |
           cd client
-          # 移除所有有问题的依赖
+          # 移除有问题的依赖（保留 expo-splash-screen）
           sed -i '/react-native-reanimated/d' package.json
           sed -i '/react-native-chart-kit/d' package.json
-          sed -i '/expo-splash-screen/d' package.json
           sed -i '/expo-location/d' package.json
           sed -i '/expo-camera/d' package.json
           sed -i '/react-native-keyboard-aware-scroll-view/d' package.json
