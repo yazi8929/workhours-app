@@ -35,7 +35,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
-    "plugins": [
+        "plugins": [
       'expo-router',
       [
         "expo-image-picker",
@@ -43,12 +43,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           "photosPermission": `允许联智记帐访问您的相册，以便您上传或保存图片。`,
           "cameraPermission": `允许联智记帐使用您的相机，以便您直接拍摄照片上传。`,
           "microphonePermission": `允许联智记帐访问您的麦克风，以便您拍摄带有声音的视频。`
-        }
-      ],
-      [
-        "expo-camera",
-        {
-          "cameraPermission": `允许联智记帐使用您的相机，以便您拍摄合同照片。`
         }
       ],
       "@react-native-community/datetimepicker",
