@@ -1,19 +1,20 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, Alert, Share, Platform, Text, Button, Modal } from 'react-native';
+import { View, ScrollView, TouchableOpacity, Share, Platform, Text, Button, Modal } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
-import { ProjectStorage, TransactionStorage, ExpenseCategoryStorage, ExportUtils, PaymentRecordStorage, InvoiceRecordStorage } from '@/utils/storage';
+import { ProjectStorage, TransactionStorage, ExpenseCategoryStorage, ExportUtils, PaymentRecordStorage, InvoiceRecordStorage, DeliveryRecordStorage } from '@/utils/storage';
 import { formatDateTime } from '@/utils/helpers';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { CustomAlert } from '@/components/CustomAlert';
+import { ChangePasswordModal } from '@/components/ChangePasswordModal';
 import { useTheme } from '@/hooks/useTheme';
 import { Spacing, BorderRadius, Theme } from '@/constants/theme';
-import { Project, PaymentRecord, InvoiceRecord } from '@/types';
+import { Project, PaymentRecord, InvoiceRecord, DeliveryRecord } from '@/types';
 
 const PROJECTS_KEY = '@project_accounting_projects';
 const TRANSACTIONS_KEY = '@project_accounting_transactions';
@@ -56,6 +57,9 @@ function createStyles(theme: Theme) {
       flex: 1,
     },
     header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
       paddingHorizontal: Spacing.lg,
       paddingTop: Spacing.xl,
       paddingBottom: Spacing.lg,
@@ -73,6 +77,25 @@ function createStyles(theme: Theme) {
     },
     sectionTitle: {
       marginBottom: Spacing.md,
+    },
+    // 统计卡片
+    statCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: Spacing.md,
+      borderRadius: BorderRadius.md,
+    },
+    statIconContainer: {
+      width: 44,
+      height: 44,
+      borderRadius: BorderRadius.md,
+      backgroundColor: 'rgba(255, 255, 255, 0.8)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: Spacing.md,
+    },
+    statInfo: {
+      flex: 1,
     },
     dataCard: {
       flexDirection: 'row',
@@ -170,12 +193,17 @@ export default function DataScreen() {
     }[];
   }>({ title: '', message: '', buttons: [] });
 
+  // 修改密码弹窗
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+
   // 项目记录相关状态
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]); // 合同项目（用于选择器）
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projectPaymentRecords, setProjectPaymentRecords] = useState<PaymentRecord[]>([]);
   const [projectInvoiceRecords, setProjectInvoiceRecords] = useState<InvoiceRecord[]>([]);
   const [projectSelectorVisible, setProjectSelectorVisible] = useState(false);
+  const [deliveryRecordsMap, setDeliveryRecordsMap] = useState<Record<string, DeliveryRecord[]>>({});
 
   const showCustomAlert = (
     title: string,
@@ -190,14 +218,28 @@ export default function DataScreen() {
     setAlertVisible(true);
   };
 
-  // 加载项目列表
+  // 加载项目列表和送货记录
   const loadProjects = async () => {
-    const allProjects = await ProjectStorage.getAll();
-    setProjects(allProjects);
+    const allProjData = await ProjectStorage.getAll();
+    setAllProjects(allProjData);
+    // 只保留合同项目（projectType === 'contract' 或没有 projectType 的旧项目）
+    const contractProjects = allProjData.filter(p => p.projectType === 'contract' || !p.projectType);
+    setProjects(contractProjects);
+
+    // 加载送货记录
+    const allDeliveryRecords = await DeliveryRecordStorage.getAll();
+    const recordsMap: Record<string, DeliveryRecord[]> = {};
+    allDeliveryRecords.forEach(record => {
+      if (!recordsMap[record.projectId]) {
+        recordsMap[record.projectId] = [];
+      }
+      recordsMap[record.projectId].push(record);
+    });
+    setDeliveryRecordsMap(recordsMap);
   };
 
   // 加载选中项目的记录
-  const loadProjectRecords = async (projectId: string | null) => {
+  const loadProjectRecords = useCallback(async (projectId: string | null) => {
     if (!projectId) {
       setProjectPaymentRecords([]);
       setProjectInvoiceRecords([]);
@@ -213,17 +255,125 @@ export default function DataScreen() {
 
     setProjectPaymentRecords(paymentRecords);
     setProjectInvoiceRecords(invoiceRecords);
-  };
+  }, []);
 
   const handleProjectSelect = (projectId: string) => {
     setSelectedProjectId(projectId);
     setProjectSelectorVisible(false);
   };
 
+  // 补录缺失记录
+  const handleFixMissingRecords = useCallback(() => {
+    const project = projects.find(p => p.id === selectedProjectId);
+    if (!project) {
+      showCustomAlert('错误', '项目未找到', [{ text: '确定', style: 'default' }]);
+      return;
+    }
+
+    const totalPayment = projectPaymentRecords.reduce((sum, r) => sum + r.amount, 0);
+    const totalInvoice = projectInvoiceRecords.reduce((sum, r) => sum + r.amount, 0);
+    const paymentDiff = project.receivedAmount - totalPayment;
+    const invoiceDiff = project.invoiceAmount - totalInvoice;
+
+    if (paymentDiff <= 0 && invoiceDiff <= 0) {
+      showCustomAlert('提示', '没有需要补录的记录', [{ text: '确定', style: 'default' }]);
+      return;
+    }
+
+    let message = '将补录以下缺失记录：\n\n';
+    if (paymentDiff > 0) {
+      message += `收款记录：¥${paymentDiff.toLocaleString()}\n`;
+    }
+    if (invoiceDiff > 0) {
+      message += `开票记录：¥${invoiceDiff.toLocaleString()}\n`;
+    }
+    message += '\n是否继续？';
+
+    showCustomAlert('补录缺失记录', message, [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '补录',
+        style: 'default',
+        onPress: async () => {
+          // 补录收款记录
+          if (paymentDiff > 0) {
+            await PaymentRecordStorage.save({
+              id: `payment-${Date.now()}`,
+              projectId: project.id,
+              projectName: project.name,
+              amount: paymentDiff,
+              date: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+            });
+          }
+          // 补录开票记录
+          if (invoiceDiff > 0) {
+            await InvoiceRecordStorage.save({
+              id: `invoice-${Date.now()}`,
+              projectId: project.id,
+              projectName: project.name,
+              amount: invoiceDiff,
+              date: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+            });
+          }
+          loadProjectRecords(selectedProjectId);
+          loadProjects();
+          showCustomAlert('成功', '缺失记录已补录', [{ text: '确定', style: 'default' }]);
+        },
+      },
+    ]);
+  }, [projects, selectedProjectId, projectPaymentRecords, projectInvoiceRecords, loadProjectRecords, showCustomAlert]);
+
+  // 同步项目金额
+  const handleSyncProjectAmount = useCallback(() => {
+    const project = projects.find(p => p.id === selectedProjectId);
+    if (!project) {
+      showCustomAlert('错误', '项目未找到', [{ text: '确定', style: 'default' }]);
+      return;
+    }
+
+    const totalPayment = projectPaymentRecords.reduce((sum, r) => sum + r.amount, 0);
+    const totalInvoice = projectInvoiceRecords.reduce((sum, r) => sum + r.amount, 0);
+
+    showCustomAlert(
+      '同步项目金额',
+      `将项目金额更新为记录合计：\n\n收款：¥${project.receivedAmount.toLocaleString()} → ¥${totalPayment.toLocaleString()}\n开票：¥${project.invoiceAmount.toLocaleString()} → ¥${totalInvoice.toLocaleString()}\n\n是否继续？`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '同步',
+          style: 'default',
+          onPress: async () => {
+            const updatedProject = {
+              ...project,
+              receivedAmount: totalPayment,
+              invoiceAmount: totalInvoice,
+              invoiceStatus: totalInvoice === 0 ? 'none' as const : (totalInvoice >= (project.contractAmount || 0) ? 'completed' as const : 'partial' as const),
+              updatedAt: new Date().toISOString(),
+            };
+            await ProjectStorage.save(updatedProject);
+            loadProjects();
+            loadProjectRecords(selectedProjectId);
+            showCustomAlert('成功', '项目金额已同步', [{ text: '确定', style: 'default' }]);
+          },
+        },
+      ]
+    );
+  }, [projects, selectedProjectId, projectPaymentRecords, projectInvoiceRecords, loadProjectRecords, loadProjects, showCustomAlert]);
+
+  // 刷新所有数据
+  const refreshAllData = useCallback(async () => {
+    await loadProjects();
+    if (selectedProjectId) {
+      await loadProjectRecords(selectedProjectId);
+    }
+  }, [selectedProjectId, loadProjectRecords]);
+
   // 当选中的项目改变时，加载对应的记录
   React.useEffect(() => {
     loadProjectRecords(selectedProjectId);
-  }, [selectedProjectId]);
+  }, [selectedProjectId, loadProjectRecords]);
 
   // 每次页面获得焦点时重新加载项目列表
   useFocusEffect(
@@ -250,7 +400,7 @@ export default function DataScreen() {
             'application/json'
           );
           await (FileSystem as any).writeAsStringAsync(fileUri2, JSON.stringify(data, null, 2));
-          Alert.alert('导出成功', `文件已保存至：${fileName}`);
+          showCustomAlert('导出成功', `文件已保存至：${fileName}`, [{ text: '确定', style: 'default' }]);
         }
       } else {
         await Share.share({
@@ -260,7 +410,7 @@ export default function DataScreen() {
       }
     } catch (error) {
       console.error('导出失败:', error);
-      Alert.alert('导出失败', '请重试或检查权限设置');
+      showCustomAlert('导出失败', '请重试或检查权限设置', [{ text: '确定', style: 'default' }]);
     }
   };
 
@@ -279,7 +429,7 @@ export default function DataScreen() {
       const fileContent = await (FileSystem as any).readAsStringAsync(fileUri);
       const data = JSON.parse(fileContent);
 
-      Alert.alert(
+      showCustomAlert(
         '确认导入',
         '导入将覆盖现有数据，是否继续？',
         [
@@ -290,9 +440,9 @@ export default function DataScreen() {
             onPress: async () => {
               const success = await ExportUtils.importData(data);
               if (success) {
-                Alert.alert('导入成功', '数据已成功导入');
+                showCustomAlert('导入成功', '数据已成功导入', [{ text: '确定', style: 'default' }]);
               } else {
-                Alert.alert('导入失败', '数据格式不正确或导入出错');
+                showCustomAlert('导入失败', '数据格式不正确或导入出错', [{ text: '确定', style: 'default' }]);
               }
             },
           },
@@ -300,7 +450,7 @@ export default function DataScreen() {
       );
     } catch (error) {
       console.error('导入失败:', error);
-      Alert.alert('导入失败', '请选择有效的 JSON 文件');
+      showCustomAlert('导入失败', '请选择有效的 JSON 文件', [{ text: '确定', style: 'default' }]);
     }
   };
 
@@ -357,6 +507,19 @@ export default function DataScreen() {
       <ThemedView level="root" style={localStyles.container}>
         <View style={localStyles.header}>
           <ThemedText variant="h2" color={theme.textPrimary}>数据管理</ThemedText>
+          <TouchableOpacity 
+            style={{ 
+              width: 40, 
+              height: 40, 
+              borderRadius: 20, 
+              backgroundColor: theme.backgroundTertiary, 
+              justifyContent: 'center', 
+              alignItems: 'center' 
+            }}
+            onPress={() => setPasswordModalVisible(true)}
+          >
+            <FontAwesome6 name="gear" size={18} color={theme.textPrimary} />
+          </TouchableOpacity>
         </View>
 
         <ScrollView contentContainerStyle={localStyles.scrollContent}>
@@ -382,10 +545,10 @@ export default function DataScreen() {
             />
           </ThemedView>
 
-          {/* 项目记录详细查询 */}
+          {/* 项目开票收款记录 */}
           <ThemedView level="default" style={localStyles.section}>
             <ThemedText variant="h4" color={theme.textSecondary} style={localStyles.sectionTitle}>
-              开票收款记录
+              项目开票收款记录
             </ThemedText>
 
             {/* 项目选择器 */}
@@ -402,7 +565,82 @@ export default function DataScreen() {
               <FontAwesome6 name="chevron-down" size={16} color={theme.textMuted} />
             </TouchableOpacity>
 
-            {/* 收款记录列表 */}
+            {/* 同步和补录按钮 */}
+            {selectedProjectId && (
+              <>
+                {/* 显示当前差异 */}
+                {(() => {
+                  const project = projects.find(p => p.id === selectedProjectId);
+                  if (!project) return null;
+                  const totalPayment = projectPaymentRecords.reduce((sum, r) => sum + r.amount, 0);
+                  const totalInvoice = projectInvoiceRecords.reduce((sum, r) => sum + r.amount, 0);
+                  const paymentDiff = project.receivedAmount - totalPayment;
+                  const invoiceDiff = project.invoiceAmount - totalInvoice;
+
+                  return (
+                    <View style={{ backgroundColor: theme.error + '10', padding: Spacing.md, borderRadius: BorderRadius.md, marginBottom: Spacing.md, marginTop: Spacing.md }}>
+                      <ThemedText variant="body" color={theme.error} style={{ fontWeight: '600', marginBottom: Spacing.xs }}>
+                        数据差异检测
+                      </ThemedText>
+                      <ThemedText variant="caption" color={theme.textPrimary}>
+                        项目收款：¥{project.receivedAmount.toLocaleString()}
+                      </ThemedText>
+                      <ThemedText variant="caption" color={theme.textPrimary}>
+                        记录收款：¥{totalPayment.toLocaleString()}
+                      </ThemedText>
+                      <ThemedText variant="caption" color={theme.textPrimary}>
+                        项目开票：¥{project.invoiceAmount.toLocaleString()}
+                      </ThemedText>
+                      <ThemedText variant="caption" color={theme.textPrimary}>
+                        记录开票：¥{totalInvoice.toLocaleString()}
+                      </ThemedText>
+                    </View>
+                  );
+                })()}
+
+                {/* 按钮容器 */}
+                <View style={{ marginBottom: Spacing.md }}>
+                  {/* 补录缺失记录按钮 */}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingVertical: Spacing.md,
+                      paddingHorizontal: Spacing.lg,
+                      borderRadius: BorderRadius.md,
+                      backgroundColor: theme.success + '20',
+                      marginBottom: Spacing.sm,
+                    }}
+                    onPress={() => handleFixMissingRecords()}
+                  >
+                    <FontAwesome6 name="circle-plus" size={16} color={theme.success} style={{ marginRight: Spacing.sm }} />
+                    <ThemedText variant="body" color={theme.success}>补录缺失记录</ThemedText>
+                  </TouchableOpacity>
+
+                  {/* 同步项目金额按钮 */}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingVertical: Spacing.md,
+                      paddingHorizontal: Spacing.lg,
+                      borderRadius: BorderRadius.md,
+                      backgroundColor: theme.primary + '20',
+                    }}
+                    onPress={() => handleSyncProjectAmount()}
+                  >
+                    <FontAwesome6 name="rotate" size={16} color={theme.primary} style={{ marginRight: Spacing.sm }} />
+                    <ThemedText variant="body" color={theme.primary}>同步项目金额</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+                {/* 收款记录列表 */}
             {selectedProjectId && (
               <>
                 <ThemedText variant="caption" color={theme.textSecondary} style={localStyles.recordSubTitle}>
@@ -410,7 +648,27 @@ export default function DataScreen() {
                 </ThemedText>
                 {projectPaymentRecords.length > 0 ? (
                   projectPaymentRecords.map((record, index) => (
-                    <View key={record.id} style={[localStyles.recordDetail, { borderBottomWidth: index === projectPaymentRecords.length - 1 ? 0 : 1 }]}>
+                    <TouchableOpacity
+                      key={record.id}
+                      style={[localStyles.recordDetail, { borderBottomWidth: index === projectPaymentRecords.length - 1 ? 0 : 1 }]}
+                      onLongPress={() => {
+                        showCustomAlert(
+                          '删除收款记录',
+                          `确定要删除这条收款记录（¥${record.amount.toLocaleString()}）吗？`,
+                          [
+                            { text: '取消', style: 'cancel' },
+                            {
+                              text: '删除',
+                              style: 'destructive',
+                              onPress: async () => {
+                                await PaymentRecordStorage.delete(record.id);
+                                loadProjectRecords(selectedProjectId);
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                    >
                       <View style={localStyles.recordDetailHeader}>
                         <FontAwesome6 name="wallet" size={16} color={theme.success} />
                         <ThemedText variant="body" color={theme.textPrimary} style={{ fontWeight: '600' }}>
@@ -420,7 +678,10 @@ export default function DataScreen() {
                       <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 4 }}>
                         {formatDateTime(record.createdAt)}
                       </ThemedText>
-                    </View>
+                      <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 2, fontSize: 10 }}>
+                        长按可删除
+                      </ThemedText>
+                    </TouchableOpacity>
                   ))
                 ) : (
                   <ThemedText variant="caption" color={theme.textMuted} style={{ paddingVertical: Spacing.md }}>
@@ -434,7 +695,27 @@ export default function DataScreen() {
                 </ThemedText>
                 {projectInvoiceRecords.length > 0 ? (
                   projectInvoiceRecords.map((record, index) => (
-                    <View key={record.id} style={[localStyles.recordDetail, { borderBottomWidth: index === projectInvoiceRecords.length - 1 ? 0 : 1 }]}>
+                    <TouchableOpacity
+                      key={record.id}
+                      style={[localStyles.recordDetail, { borderBottomWidth: index === projectInvoiceRecords.length - 1 ? 0 : 1 }]}
+                      onLongPress={() => {
+                        showCustomAlert(
+                          '删除开票记录',
+                          `确定要删除这条开票记录（¥${record.amount.toLocaleString()}）吗？`,
+                          [
+                            { text: '取消', style: 'cancel' },
+                            {
+                              text: '删除',
+                              style: 'destructive',
+                              onPress: async () => {
+                                await InvoiceRecordStorage.delete(record.id);
+                                loadProjectRecords(selectedProjectId);
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                    >
                       <View style={localStyles.recordDetailHeader}>
                         <FontAwesome6 name="file-invoice" size={16} color={theme.error} />
                         <ThemedText variant="body" color={theme.textPrimary} style={{ fontWeight: '600' }}>
@@ -444,7 +725,10 @@ export default function DataScreen() {
                       <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 4 }}>
                         {formatDateTime(record.createdAt)}
                       </ThemedText>
-                    </View>
+                      <ThemedText variant="caption" color={theme.textMuted} style={{ marginTop: 2, fontSize: 10 }}>
+                        长按可删除
+                      </ThemedText>
+                    </TouchableOpacity>
                   ))
                 ) : (
                   <ThemedText variant="caption" color={theme.textMuted} style={{ paddingVertical: Spacing.md }}>
@@ -546,6 +830,12 @@ export default function DataScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* 修改密码弹窗 */}
+      <ChangePasswordModal 
+        visible={passwordModalVisible}
+        onClose={() => setPasswordModalVisible(false)}
+      />
     </Screen>
   );
 }

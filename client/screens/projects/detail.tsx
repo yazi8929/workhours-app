@@ -1,9 +1,9 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
-import { Project, Transaction, InvoiceStatusNames } from '@/types';
-import { ProjectStorage, TransactionStorage } from '@/utils/storage';
+import { Project, Transaction, DeliveryRecord, InvoiceStatusNames, ProjectTypeNames } from '@/types';
+import { ProjectStorage, TransactionStorage, DeliveryRecordStorage } from '@/utils/storage';
 import { formatCurrency, formatDate, calculateProjectStats } from '@/utils/helpers';
 import { TransactionTypeNames } from '@/types';
 import { Screen } from '@/components/Screen';
@@ -22,6 +22,7 @@ export default function ProjectDetailScreen() {
 
   const [project, setProject] = useState<Project | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [deliveryRecords, setDeliveryRecords] = useState<DeliveryRecord[]>([]);
   const [stats, setStats] = useState({ totalExpense: 0, netProfit: 0 });
 
   const loadData = useCallback(async () => {
@@ -35,10 +36,12 @@ export default function ProjectDetailScreen() {
     }
 
     const transactionsData = await TransactionStorage.getByProjectId(id);
+    const deliveryRecordsData = await DeliveryRecordStorage.getByProjectId(id);
     const projectStats = await calculateProjectStats(projectData);
 
     setProject(projectData);
     setTransactions(transactionsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    setDeliveryRecords(deliveryRecordsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
     setStats(projectStats);
   }, [id, router]);
 
@@ -49,12 +52,41 @@ export default function ProjectDetailScreen() {
   );
 
   const handleAddTransaction = () => {
+    console.log('添加支出被点击，项目ID:', id);
     router.push('/transactions/add', { projectId: id });
+  };
+
+  const handleAddDelivery = () => {
+    console.log('添加送货记录被点击，项目ID:', id, '项目名称:', project?.name);
+    router.push('/delivery-add', { projectId: id });
   };
 
   const handleEditProject = () => {
     router.push('/projects/edit', { id });
   };
+
+  // 删除送货记录
+  const handleDeleteDeliveryRecord = useCallback((record: DeliveryRecord) => {
+    Alert.alert(
+      '删除送货记录',
+      `确定要删除这条送货记录吗？\n\n${record.description}\n\n此操作不可撤销。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await DeliveryRecordStorage.delete(record.id);
+            if (success) {
+              loadData();
+            } else {
+              Alert.alert('错误', '删除失败，请重试');
+            }
+          },
+        },
+      ]
+    );
+  }, [loadData]);
 
   if (!project) {
     return (
@@ -96,9 +128,17 @@ export default function ProjectDetailScreen() {
           {/* 项目基本信息 */}
           <ThemedView level="default" style={styles.infoCard}>
             <View style={styles.projectTitleRow}>
-              <ThemedText variant="h2" color={theme.textPrimary} style={styles.detailProjectName}>
-                {project.name}
-              </ThemedText>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                {/* 项目类型标识 */}
+                <View style={[styles.typeBadge, { backgroundColor: project.projectType === 'delivery' ? theme.accent : theme.primary }]}>
+                  <ThemedText variant="caption" color="#FFFFFF" style={{ fontSize: 10, fontWeight: '500' }}>
+                    {project.projectType === 'delivery' ? '采购' : '工程'}
+                  </ThemedText>
+                </View>
+                <ThemedText variant="h2" color={theme.textPrimary} style={styles.detailProjectName}>
+                  {project.name}
+                </ThemedText>
+              </View>
             </View>
 
             {project.description && (
@@ -180,40 +220,61 @@ export default function ProjectDetailScreen() {
             </ThemedText>
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
-                <ThemedText variant="caption" color={theme.textMuted}>合同金额</ThemedText>
+                <ThemedText variant="caption" color={theme.textMuted}>
+                  {project.projectType === 'delivery' ? '送货总额' : '合同金额'}
+                </ThemedText>
                 <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
-                  {formatCurrency(project.contractAmount ?? 0)}
+                  {formatCurrency(project.projectType === 'delivery' 
+                    ? deliveryRecords.reduce((sum, r) => sum + (r.amount || 0), 0)
+                    : (project.contractAmount ?? 0))}
                 </ThemedText>
               </View>
-              <View style={styles.statItem}>
-                <ThemedText variant="caption" color={theme.textMuted}>结算金额</ThemedText>
-                <ThemedText variant="h3" color={theme.textSecondary} style={styles.statValue}>
-                  {formatCurrency(project.settlementAmount ?? 0)}
-                </ThemedText>
-              </View>
+              {project.projectType === 'contract' && (
+                <View style={styles.statItem}>
+                  <ThemedText variant="caption" color={theme.textMuted}>结算金额</ThemedText>
+                  <ThemedText variant="h3" color={theme.textSecondary} style={styles.statValue}>
+                    {formatCurrency(project.settlementAmount ?? 0)}
+                  </ThemedText>
+                </View>
+              )}
             </View>
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <ThemedText variant="caption" color={theme.textMuted}>已收款</ThemedText>
                 <ThemedText variant="h3" color={theme.success} style={styles.statValue}>
-                  {formatCurrency(project.receivedAmount)}
+                  {formatCurrency(project.projectType === 'delivery'
+                    ? deliveryRecords.reduce((sum, r) => sum + (r.receivedAmount || 0), 0)
+                    : project.receivedAmount)}
                 </ThemedText>
-                {project.contractAmount && (
+              {(() => {
+                const baseAmount = project.projectType === 'delivery' 
+                  ? deliveryRecords.reduce((sum, r) => sum + (r.amount || 0), 0)
+                  : (project.contractAmount ?? 0);
+                const receivedAmount = project.projectType === 'delivery'
+                  ? deliveryRecords.reduce((sum, r) => sum + (r.receivedAmount || 0), 0)
+                  : project.receivedAmount;
+                return baseAmount > 0 && (
                   <ThemedText variant="caption" color={theme.textMuted}>
-                    收款率 {((project.receivedAmount / project.contractAmount) * 100).toFixed(1)}%
+                    收款率 {((receivedAmount / baseAmount) * 100).toFixed(1)}%
                   </ThemedText>
-                )}
+                );
+              })()}
               </View>
               <View style={styles.statItem}>
                 <ThemedText variant="caption" color={theme.textMuted}>已支出</ThemedText>
                 <ThemedText variant="h3" color={theme.error} style={styles.statValue}>
                   {formatCurrency(stats.totalExpense)}
                 </ThemedText>
-                {project.contractAmount && (
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    占比 {((stats.totalExpense / project.contractAmount) * 100).toFixed(1)}%
-                  </ThemedText>
-                )}
+                {(() => {
+                  const baseAmount = project.projectType === 'delivery' 
+                    ? deliveryRecords.reduce((sum, r) => sum + (r.amount || 0), 0)
+                    : (project.contractAmount ?? 0);
+                  return baseAmount > 0 && (
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      占比 {((stats.totalExpense / baseAmount) * 100).toFixed(1)}%
+                    </ThemedText>
+                  );
+                })()}
               </View>
             </View>
             <View style={styles.statRow}>
@@ -222,11 +283,16 @@ export default function ProjectDetailScreen() {
                 <ThemedText variant="h3" color={stats.netProfit >= 0 ? theme.success : theme.error} style={styles.statValue}>
                   {formatCurrency(stats.netProfit)}
                 </ThemedText>
-                {project.contractAmount && (
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    利润率 {((stats.netProfit / project.contractAmount) * 100).toFixed(1)}%
-                  </ThemedText>
-                )}
+                {(() => {
+                  const baseAmount = project.projectType === 'delivery' 
+                    ? deliveryRecords.reduce((sum, r) => sum + (r.amount || 0), 0)
+                    : (project.contractAmount ?? 0);
+                  return baseAmount > 0 && (
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      利润率 {((stats.netProfit / baseAmount) * 100).toFixed(1)}%
+                    </ThemedText>
+                  );
+                })()}
               </View>
             </View>
           </ThemedView>
@@ -240,13 +306,23 @@ export default function ProjectDetailScreen() {
               <View style={styles.statItem}>
                 <ThemedText variant="caption" color={theme.textMuted}>已开票金额</ThemedText>
                 <ThemedText variant="h3" color={theme.error} style={styles.statValue}>
-                  {formatCurrency(project.invoiceAmount ?? 0)}
+                  {formatCurrency(project.projectType === 'delivery'
+                    ? deliveryRecords.reduce((sum, r) => sum + (r.invoiceAmount || 0), 0)
+                    : (project.invoiceAmount ?? 0))}
                 </ThemedText>
-                {project.contractAmount && (
-                  <ThemedText variant="caption" color={theme.textMuted}>
-                    开票率 {(((project.invoiceAmount ?? 0) / project.contractAmount) * 100).toFixed(1)}%
-                  </ThemedText>
-                )}
+                {(() => {
+                  const baseAmount = project.projectType === 'delivery' 
+                    ? deliveryRecords.reduce((sum, r) => sum + (r.amount || 0), 0)
+                    : (project.contractAmount ?? 0);
+                  const invoicedAmount = project.projectType === 'delivery'
+                    ? deliveryRecords.reduce((sum, r) => sum + (r.invoiceAmount || 0), 0)
+                    : (project.invoiceAmount ?? 0);
+                  return baseAmount > 0 && (
+                    <ThemedText variant="caption" color={theme.textMuted}>
+                      开票率 {((invoicedAmount / baseAmount) * 100).toFixed(1)}%
+                    </ThemedText>
+                  );
+                })()}
               </View>
               <View style={styles.statItem}>
                 <ThemedText variant="caption" color={theme.textMuted}>开票状态</ThemedText>
@@ -255,16 +331,24 @@ export default function ProjectDetailScreen() {
                 </ThemedText>
               </View>
             </View>
-            {project.contractAmount && (
-              <View style={styles.statRow}>
-                <View style={styles.statItem}>
-                  <ThemedText variant="caption" color={theme.textMuted}>待开票金额</ThemedText>
-                  <ThemedText variant="h3" color={theme.textSecondary} style={styles.statValue}>
-                    {formatCurrency(project.contractAmount - (project.invoiceAmount ?? 0))}
-                  </ThemedText>
+            {(() => {
+              const baseAmount = project.projectType === 'delivery' 
+                ? deliveryRecords.reduce((sum, r) => sum + (r.amount || 0), 0)
+                : (project.contractAmount ?? 0);
+              const invoicedAmount = project.projectType === 'delivery'
+                ? deliveryRecords.reduce((sum, r) => sum + (r.invoiceAmount || 0), 0)
+                : (project.invoiceAmount ?? 0);
+              return baseAmount > 0 && (
+                <View style={styles.statRow}>
+                  <View style={styles.statItem}>
+                    <ThemedText variant="caption" color={theme.textMuted}>待开票金额</ThemedText>
+                    <ThemedText variant="h3" color={theme.textSecondary} style={styles.statValue}>
+                      {formatCurrency(baseAmount - invoicedAmount)}
+                    </ThemedText>
+                  </View>
                 </View>
-              </View>
-            )}
+              );
+            })()}
           </ThemedView>
 
           {/* 支出分类统计 */}
@@ -300,13 +384,183 @@ export default function ProjectDetailScreen() {
             </ThemedView>
           )}
 
-          {/* 交易记录 */}
-          <View style={styles.sectionHeader}>
-            <ThemedText variant="h4" color={theme.textSecondary}>交易记录</ThemedText>
-            <ThemedText variant="caption" color={theme.textMuted}>
-              共 {transactions.length} 条
-            </ThemedText>
-          </View>
+          {/* 送货记录 - 仅送货项目显示 */}
+          {project.projectType === 'delivery' && (
+            <>
+              {/* 送货统计 */}
+              <ThemedView level="default" style={styles.statsCard}>
+                <ThemedText variant="h4" color={theme.textSecondary} style={styles.statsTitle}>
+                  送货统计
+                </ThemedText>
+                <View style={styles.statsRow}>
+                  <View style={styles.statItem}>
+                    <ThemedText variant="caption" color={theme.textMuted}>送货次数</ThemedText>
+                    <ThemedText variant="h3" color={theme.accent} style={styles.statValue}>
+                      {deliveryRecords.length}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.statItem}>
+                    <ThemedText variant="caption" color={theme.textMuted}>总图片数</ThemedText>
+                    <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
+                      {deliveryRecords.reduce((sum, r) => sum + r.images.length, 0)}
+                    </ThemedText>
+                  </View>
+                </View>
+                <View style={styles.statsRow}>
+                  <View style={styles.statItem}>
+                    <ThemedText variant="caption" color={theme.textMuted}>送货总额</ThemedText>
+                    <ThemedText variant="h3" color={theme.success} style={styles.statValue}>
+                      {formatCurrency(deliveryRecords.reduce((sum, r) => sum + (r.amount || 0), 0))}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.statItem}>
+                    <ThemedText variant="caption" color={theme.textMuted}>已开票</ThemedText>
+                    <ThemedText variant="h3" color={theme.primary} style={styles.statValue}>
+                      {formatCurrency(deliveryRecords.reduce((sum, r) => sum + (r.invoiceAmount || 0), 0))}
+                    </ThemedText>
+                  </View>
+                </View>
+                <View style={styles.statsRow}>
+                  <View style={styles.statItem}>
+                    <ThemedText variant="caption" color={theme.textMuted}>已收款</ThemedText>
+                    <ThemedText variant="h3" color={theme.success} style={styles.statValue}>
+                      {formatCurrency(deliveryRecords.reduce((sum, r) => sum + (r.receivedAmount || 0), 0))}
+                    </ThemedText>
+                  </View>
+                </View>
+                {deliveryRecords.length > 0 && (
+                  <View style={styles.statsRow}>
+                    <View style={styles.statItem}>
+                      <ThemedText variant="caption" color={theme.textMuted}>首次送货</ThemedText>
+                      <ThemedText variant="body" color={theme.textPrimary}>
+                        {formatDate(deliveryRecords[deliveryRecords.length - 1].date)}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.statItem}>
+                      <ThemedText variant="caption" color={theme.textMuted}>最近送货</ThemedText>
+                      <ThemedText variant="body" color={theme.textPrimary}>
+                        {formatDate(deliveryRecords[0].date)}
+                      </ThemedText>
+                    </View>
+                  </View>
+                )}
+              </ThemedView>
+
+              <View style={styles.sectionHeader}>
+                <ThemedText variant="h4" color={theme.textSecondary}>送货记录</ThemedText>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
+                  <ThemedText variant="caption" color={theme.textMuted}>
+                    共 {deliveryRecords.length} 条
+                  </ThemedText>
+                  <TouchableOpacity 
+                    onPress={handleAddDelivery}
+                    style={{ 
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      backgroundColor: theme.accent,
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 16
+                    }}
+                  >
+                    <FontAwesome6 name="plus" size={12} color="#fff" style={{ marginRight: 4 }} />
+                    <ThemedText variant="caption" color="#fff">添加送货</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {deliveryRecords.length === 0 ? (
+                <TouchableOpacity onPress={handleAddDelivery} activeOpacity={0.8}>
+                  <ThemedView level="default" style={styles.emptyCard}>
+                    <FontAwesome6 name="truck" size={48} color={theme.textMuted} style={styles.emptyIcon} />
+                    <ThemedText variant="body" color={theme.textSecondary} style={styles.emptyText}>
+                      暂无送货记录
+                    </ThemedText>
+                    <ThemedText variant="caption" color={theme.textMuted} style={styles.emptyHint}>
+                      点击此处添加第一条送货记录
+                    </ThemedText>
+                  </ThemedView>
+                </TouchableOpacity>
+              ) : (
+                deliveryRecords.map((record, index) => (
+                  <TouchableOpacity
+                    key={record.id}
+                    onLongPress={() => handleDeleteDeliveryRecord(record)}
+                    activeOpacity={0.8}
+                  >
+                    <ThemedView level="default" style={styles.transactionCard}>
+                      <View style={styles.transactionHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                          <View style={[styles.typeBadge, { backgroundColor: theme.accent + '20', marginRight: 8 }]}>
+                            <ThemedText variant="caption" color={theme.accent}>
+                              第 {deliveryRecords.length - index} 次
+                            </ThemedText>
+                          </View>
+                          <ThemedText variant="body" color={theme.textPrimary} style={{ flex: 1 }}>
+                            {record.description}
+                          </ThemedText>
+                        </View>
+                        {record.amount > 0 && (
+                          <ThemedText variant="h4" color={theme.primary}>
+                            {formatCurrency(record.amount)}
+                          </ThemedText>
+                        )}
+                      </View>
+                      {record.images.length > 0 && (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
+                          {record.images.map((img, idx) => (
+                          <Image 
+                            key={idx} 
+                            source={{ uri: img }} 
+                            style={{ width: 80, height: 80, borderRadius: 8, marginRight: 8 }}
+                            resizeMode="cover"
+                          />
+                        ))}
+                      </ScrollView>
+                    )}
+                    <View style={styles.transactionFooter}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <ThemedText variant="caption" color={theme.textMuted}>
+                          {formatDate(record.date)}
+                        </ThemedText>
+                        <ThemedText variant="caption" color={theme.textMuted}>
+                          {record.images.length} 张图片
+                        </ThemedText>
+                        {record.invoiceStatus !== 'none' && (
+                          <View style={[styles.typeBadge, { 
+                            backgroundColor: record.invoiceStatus === 'completed' 
+                              ? theme.success + '20' 
+                              : theme.accent + '20' 
+                          }]}>
+                            <ThemedText variant="caption" color={record.invoiceStatus === 'completed' ? theme.success : theme.accent}>
+                              {record.invoiceStatus === 'completed' ? '已开票' : '部分开票'}
+                              {record.invoiceAmount > 0 && ` ¥${formatCurrency(record.invoiceAmount)}`}
+                            </ThemedText>
+                          </View>
+                        )}
+                        {record.receivedAmount > 0 && (
+                          <View style={[styles.typeBadge, { backgroundColor: theme.success + '20' }]}>
+                            <ThemedText variant="caption" color={theme.success}>
+                              已收款 ¥{formatCurrency(record.receivedAmount)}
+                            </ThemedText>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </ThemedView>
+                </TouchableOpacity>
+              ))
+            )}
+          </>
+        )}
+
+        {/* 交易记录 */}
+        <View style={styles.sectionHeader}>
+          <ThemedText variant="h4" color={theme.textSecondary}>交易记录</ThemedText>
+          <ThemedText variant="caption" color={theme.textMuted}>
+            共 {transactions.length} 条
+          </ThemedText>
+        </View>
 
           {transactions.length === 0 ? (
             <ThemedView level="default" style={styles.emptyCard}>
@@ -348,9 +602,15 @@ export default function ProjectDetailScreen() {
           <View style={{ height: Spacing['6xl'] }} />
         </ScrollView>
 
-        <TouchableOpacity style={styles.fab} onPress={handleAddTransaction}>
-          <FontAwesome6 name="plus" size={24} color={theme.buttonPrimaryText} />
-        </TouchableOpacity>
+        {/* FAB 按钮 */}
+        <View style={styles.fabContainer} pointerEvents="box-none">
+          <TouchableOpacity 
+            style={styles.fab} 
+            onPress={project?.projectType === 'delivery' ? handleAddDelivery : handleAddTransaction}
+          >
+            <FontAwesome6 name="plus" size={24} color={theme.buttonPrimaryText} />
+          </TouchableOpacity>
+        </View>
       </ThemedView>
     </Screen>
   );

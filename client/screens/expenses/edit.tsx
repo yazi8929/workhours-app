@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, ScrollView, TouchableOpacity, TextInput, Modal, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Alert, FlatList, Image, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useSafeRouter } from '@/hooks/useSafeRouter';
+import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { Transaction, Project, ExpenseCategory } from '@/types';
 import { TransactionStorage, ProjectStorage, ExpenseCategoryStorage } from '@/utils/storage';
-import { generateUUID, formatDate } from '@/utils/helpers';
+import { formatDate } from '@/utils/helpers';
 import { createFormDataFile } from '@/utils';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
@@ -41,6 +41,12 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.md,
+  },
+  deleteButton: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginRight: Spacing.sm,
   },
   scrollContent: {
     paddingHorizontal: Spacing.lg,
@@ -190,20 +196,42 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.md,
   },
+  // 图片查看器
+  imageViewerContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerClose: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+  },
+  fullScreenImage: {
+    width: '90%',
+    height: '70%',
+    borderRadius: BorderRadius.md,
+  },
 });
 
-export default function AddExpenseScreen() {
+export default function EditExpenseScreen() {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
+  const { id } = useSafeSearchParams<{ id: string }>();
 
+  const [loading, setLoading] = useState(true);
+  const [transaction, setTransaction] = useState<Transaction | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [date, setDate] = useState(formatDate(new Date().toISOString()));
+  const [date, setDate] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showProjectSelector, setShowProjectSelector] = useState(false);
   const [showCategorySelector, setShowCategorySelector] = useState(false);
@@ -213,28 +241,66 @@ export default function AddExpenseScreen() {
   const [isInvoiced, setIsInvoiced] = useState(false);
   const [isPaid, setIsPaid] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  const [existingImages, setExistingImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  const loadData = useCallback(async () => {
-    const [projData, catData] = await Promise.all([
-      ProjectStorage.getAll(),
-      ExpenseCategoryStorage.getAll(),
-    ]);
-    setProjects(projData);
-    setCategories(catData);
+  // 图片查看器状态
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
+  const [currentImageUri, setCurrentImageUri] = useState<string>('');
 
-    // 默认选择第一个项目
-    if (projData.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(projData[0].id);
-    }
-  }, [selectedProjectId]);
+  const handleImagePress = useCallback((uri: string) => {
+    setCurrentImageUri(uri);
+    setImageViewerVisible(true);
+  }, []);
 
+  // 加载数据
   useEffect(() => {
-    async function init() {
-      await loadData();
+    let isMounted = true;
+    
+    async function loadData() {
+      if (!id) {
+        Alert.alert('错误', '支出记录不存在');
+        router.back();
+        return;
+      }
+
+      const [txData, projData, catData] = await Promise.all([
+        TransactionStorage.getById(id),
+        ProjectStorage.getAll(),
+        ExpenseCategoryStorage.getAll(),
+      ]);
+
+      if (!isMounted) return;
+
+      if (!txData) {
+        Alert.alert('错误', '支出记录不存在');
+        router.back();
+        return;
+      }
+
+      setTransaction(txData);
+      setProjects(projData);
+      setCategories(catData);
+
+      // 填充表单数据
+      setSelectedProjectId(txData.projectId);
+      setSelectedCategoryId(txData.categoryId || null);
+      setAmount(txData.amount.toString());
+      setDescription(txData.description);
+      setDate(txData.date);
+      setPurchaseUnit(txData.purchaseUnit || '');
+      setIsInvoiced(txData.isInvoiced || false);
+      setIsPaid(txData.isPaid || false);
+      setExistingImages(txData.images || []);
+      
+      setLoading(false);
     }
-    init();
-  }, [loadData]);
+    loadData();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [id]); // 移除 router 依赖，避免无限循环
 
   // 拍照
   const handleTakePhoto = useCallback(async () => {
@@ -273,13 +339,18 @@ export default function AddExpenseScreen() {
 
     if (!result.canceled) {
       const newUris = result.assets.map(asset => asset.uri);
-      setImages(prev => [...prev, ...newUris].slice(0, 9)); // 最多9张
+      setImages(prev => [...prev, ...newUris].slice(0, 9));
     }
   }, []);
 
-  // 删除图片
+  // 删除新添加的图片
   const handleRemoveImage = useCallback((index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // 删除已存在的图片
+  const handleRemoveExistingImage = useCallback((index: number) => {
+    setExistingImages(prev => prev.filter((_, i) => i !== index));
   }, []);
 
   // 上传图片到服务器
@@ -313,8 +384,8 @@ export default function AddExpenseScreen() {
   }, []);
 
   const handleSave = async () => {
-    if (!selectedProjectId) {
-      Alert.alert('错误', '请先创建项目');
+    if (!transaction || !selectedProjectId) {
+      Alert.alert('错误', '数据不完整');
       return;
     }
 
@@ -331,16 +402,18 @@ export default function AddExpenseScreen() {
 
     setUploading(true);
     try {
-      // 上传图片
+      // 上传新图片
       let uploadedImageUrls: string[] = [];
       if (images.length > 0) {
         uploadedImageUrls = await uploadImages(images);
       }
 
-      const newTransaction: Transaction = {
-        id: generateUUID(),
+      // 合并已存在的图片和新上传的图片
+      const allImages = [...existingImages, ...uploadedImageUrls];
+
+      const updatedTransaction: Transaction = {
+        ...transaction,
         projectId: selectedProjectId,
-        type: 'material',
         amount: amountValue,
         description: description.trim(),
         date,
@@ -348,12 +421,11 @@ export default function AddExpenseScreen() {
         purchaseUnit: purchaseUnit.trim() || undefined,
         isInvoiced,
         isPaid,
-        images: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
-        createdAt: new Date().toISOString(),
+        images: allImages.length > 0 ? allImages : undefined,
         updatedAt: new Date().toISOString(),
       };
 
-      const success = await TransactionStorage.save(newTransaction);
+      const success = await TransactionStorage.update(updatedTransaction);
       if (success) {
         router.back();
       } else {
@@ -367,7 +439,31 @@ export default function AddExpenseScreen() {
     }
   };
 
-  if (projects.length === 0) {
+  const handleDelete = async () => {
+    if (!transaction) return;
+
+    Alert.alert(
+      '确认删除',
+      '确定要删除这条支出记录吗？此操作不可撤销。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await TransactionStorage.delete(transaction.id);
+            if (success) {
+              router.back();
+            } else {
+              Alert.alert('错误', '删除失败，请重试');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (loading) {
     return (
       <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
         <ThemedView level="root" style={styles.container}>
@@ -376,37 +472,12 @@ export default function AddExpenseScreen() {
               <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
             </TouchableOpacity>
             <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
-              添加支出
+              编辑支出
             </ThemedText>
             <View style={{ width: 32 }} />
           </View>
-
-          <View style={{
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-            paddingHorizontal: Spacing.xl,
-          }}>
-            <FontAwesome6 name="folder-open" size={64} color={theme.textMuted} style={{ opacity: 0.5, marginBottom: Spacing.lg }} />
-            <ThemedText variant="h4" color={theme.textSecondary} style={{ marginBottom: Spacing.sm, textAlign: 'center' }}>
-              暂无项目
-            </ThemedText>
-            <ThemedText variant="body" color={theme.textMuted} style={{ textAlign: 'center', marginBottom: Spacing.xl }}>
-              请先创建项目后再添加支出
-            </ThemedText>
-            <TouchableOpacity
-              style={{
-                paddingHorizontal: Spacing.xl,
-                paddingVertical: Spacing.md,
-                borderRadius: BorderRadius.md,
-                backgroundColor: theme.primary,
-              }}
-              onPress={() => router.push('/projects/add')}
-            >
-              <ThemedText variant="body" color={theme.buttonPrimaryText}>
-                创建项目
-              </ThemedText>
-            </TouchableOpacity>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={theme.primary} />
           </View>
         </ThemedView>
       </Screen>
@@ -421,19 +492,28 @@ export default function AddExpenseScreen() {
             <FontAwesome6 name="arrow-left" size={20} color={theme.textPrimary} />
           </TouchableOpacity>
           <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
-            添加支出
+            编辑支出
           </ThemedText>
-          <TouchableOpacity 
-            style={[styles.saveButton, { backgroundColor: uploading ? theme.textMuted : theme.primary }]} 
-            onPress={handleSave}
-            disabled={uploading}
-          >
-            {uploading ? (
-              <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
-            ) : (
-              <ThemedText variant="body" color={theme.buttonPrimaryText}>保存</ThemedText>
-            )}
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row' }}>
+            <TouchableOpacity
+              style={[styles.deleteButton, { backgroundColor: theme.error + '20' }]}
+              onPress={handleDelete}
+              activeOpacity={0.7}
+            >
+              <ThemedText variant="body" color={theme.error}>删除</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.saveButton, { backgroundColor: uploading ? theme.textMuted : theme.primary }]} 
+              onPress={handleSave}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator size="small" color={theme.buttonPrimaryText} />
+              ) : (
+                <ThemedText variant="body" color={theme.buttonPrimaryText}>保存</ThemedText>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -626,19 +706,49 @@ export default function AddExpenseScreen() {
             
             <View style={styles.imageSection}>
               <View style={styles.imageRow}>
-                {images.map((uri, index) => (
-                  <View key={index} style={styles.imageContainer}>
+                {/* 已存在的图片 */}
+                {existingImages.map((uri, index) => (
+                  <TouchableOpacity 
+                    key={`existing-${index}`} 
+                    style={styles.imageContainer}
+                    onPress={() => handleImagePress(uri)}
+                    activeOpacity={0.8}
+                  >
                     <Image source={{ uri }} style={styles.imagePreview} />
                     <TouchableOpacity
                       style={styles.removeImageButton}
-                      onPress={() => handleRemoveImage(index)}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleRemoveExistingImage(index);
+                      }}
                     >
                       <FontAwesome6 name="xmark" size={12} color="#fff" />
                     </TouchableOpacity>
-                  </View>
+                  </TouchableOpacity>
                 ))}
                 
-                {images.length < 9 && (
+                {/* 新添加的图片 */}
+                {images.map((uri, index) => (
+                  <TouchableOpacity 
+                    key={`new-${index}`} 
+                    style={styles.imageContainer}
+                    onPress={() => handleImagePress(uri)}
+                    activeOpacity={0.8}
+                  >
+                    <Image source={{ uri }} style={styles.imagePreview} />
+                    <TouchableOpacity
+                      style={styles.removeImageButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleRemoveImage(index);
+                      }}
+                    >
+                      <FontAwesome6 name="xmark" size={12} color="#fff" />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                ))}
+                
+                {(existingImages.length + images.length) < 9 && (
                   <TouchableOpacity
                     style={[styles.addImageButton, { borderColor: theme.border }]}
                     onPress={() => {
@@ -658,7 +768,7 @@ export default function AddExpenseScreen() {
                 )}
               </View>
               
-              {images.length === 0 && (
+              {(existingImages.length + images.length) === 0 && (
                 <View style={styles.imageActionsRow}>
                   <TouchableOpacity
                     style={[styles.imageActionButton, { backgroundColor: theme.backgroundTertiary }]}
@@ -821,6 +931,28 @@ export default function AddExpenseScreen() {
               />
             </View>
           </TouchableOpacity>
+        </Modal>
+
+        {/* 图片查看器 Modal */}
+        <Modal
+          visible={imageViewerVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setImageViewerVisible(false)}
+        >
+          <View style={styles.imageViewerContainer}>
+            <TouchableOpacity
+              style={styles.imageViewerClose}
+              onPress={() => setImageViewerVisible(false)}
+            >
+              <FontAwesome6 name="xmark" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Image
+              source={{ uri: currentImageUri }}
+              style={styles.fullScreenImage}
+              resizeMode="contain"
+            />
+          </View>
         </Modal>
       </ThemedView>
     </Screen>

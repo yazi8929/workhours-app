@@ -45,6 +45,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           "microphonePermission": `允许联智记帐访问您的麦克风，以便您拍摄带有声音的视频。`
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": `允许联智记帐使用您的相机，以便您拍摄合同照片。`
+        }
+      ],
       "@react-native-community/datetimepicker",
       "expo-splash-screen"
     ],

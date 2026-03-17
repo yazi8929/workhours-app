@@ -5,6 +5,7 @@ export const createStyles = (theme: Theme) => {
   return StyleSheet.create({
     container: {
       flex: 1,
+      position: 'relative',
     },
     loadingContainer: {
       flex: 1,
@@ -17,7 +18,33 @@ export const createStyles = (theme: Theme) => {
       alignItems: 'center',
       paddingHorizontal: Spacing.lg,
       paddingTop: Spacing.xl,
-      paddingBottom: Spacing.lg,
+      paddingBottom: Spacing.md,
+    },
+    // Tab 切换样式
+    tabContainer: {
+      flexDirection: 'row',
+      paddingHorizontal: Spacing.lg,
+      paddingBottom: Spacing.md,
+      gap: Spacing.sm,
+    },
+    tabButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: Spacing.sm + 2,
+      paddingHorizontal: Spacing.md,
+      borderRadius: BorderRadius.md,
+      backgroundColor: theme.backgroundTertiary,
+      gap: Spacing.xs,
+    },
+    tabBadge: {
+      minWidth: 20,
+      height: 20,
+      borderRadius: 10,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 6,
     },
     backButton: {
       width: 32,
@@ -57,6 +84,16 @@ export const createStyles = (theme: Theme) => {
       marginBottom: Spacing.md,
       boxShadow: '0px 2px 8px rgba(79, 70, 229, 0.08)',
     },
+    quickAddButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.md,
+      borderRadius: BorderRadius.md,
+      marginTop: Spacing.sm,
+      borderWidth: 1,
+    },
     projectHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -79,6 +116,21 @@ export const createStyles = (theme: Theme) => {
       borderRadius: 4,
       marginRight: Spacing.sm,
       flexShrink: 0,
+    },
+    projectHeaderRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexShrink: 0,
+    },
+    typeBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: BorderRadius.sm,
+      marginRight: Spacing.sm,
+    },
+    typeBadgeText: {
+      fontSize: 11,
+      fontWeight: '500',
     },
     projectName: {
       flex: 1,
@@ -300,10 +352,18 @@ export const createStyles = (theme: Theme) => {
       justifyContent: 'space-between',
       alignItems: 'center',
     },
+    fabContainer: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 999,
+    },
     fab: {
       position: 'absolute',
       right: Spacing.lg,
-      bottom: Spacing.xl,
+      bottom: Spacing['2xl'],
       width: 56,
       height: 56,
       borderRadius: 28,
@@ -311,6 +371,8 @@ export const createStyles = (theme: Theme) => {
       justifyContent: 'center',
       alignItems: 'center',
       boxShadow: '0px 4px 12px rgba(79, 70, 229, 0.3)',
+      zIndex: 1000,
+      elevation: 5,
     },
     // 表单样式
     saveButton: {
@@ -344,6 +406,59 @@ export const createStyles = (theme: Theme) => {
       minHeight: 80,
       paddingTop: Spacing.md,
       textAlignVertical: 'top',
+    },
+    dateButton: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      borderRadius: BorderRadius.md,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      minHeight: 44,
+      borderWidth: 1,
+    },
+    // 文件上传样式
+    uploadButtons: {
+      gap: Spacing.md,
+    },
+    uploadButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: Spacing.lg,
+      paddingHorizontal: Spacing.lg,
+      borderRadius: BorderRadius.lg,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      gap: Spacing.sm,
+    },
+    uploadText: {
+      marginTop: 2,
+    },
+    fileItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.lg,
+      borderRadius: BorderRadius.lg,
+      borderWidth: 1,
+    },
+    fileInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      gap: Spacing.sm,
+    },
+    fileName: {
+      flex: 1,
+    },
+    fileActions: {
+      flexDirection: 'row',
+      gap: Spacing.md,
+    },
+    fileActionBtn: {
+      padding: Spacing.xs,
     },
     statusContainer: {
       flexDirection: 'row',
@@ -397,6 +512,73 @@ export const createStyles = (theme: Theme) => {
     },
     expenseTypeValues: {
       alignItems: 'flex-end',
+    },
+    // 图片网格样式
+    imageGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: Spacing.sm,
+      marginBottom: Spacing.md,
+    },
+    imageItem: {
+      width: 80,
+      height: 80,
+      borderRadius: BorderRadius.md,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    imageThumbnail: {
+      width: '100%',
+      height: '100%',
+    },
+    imageDeleteBtn: {
+      position: 'absolute',
+      top: 4,
+      right: 4,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    imageActions: {
+      flexDirection: 'row',
+      gap: Spacing.md,
+    },
+    imageActionBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: Spacing.md,
+      borderRadius: BorderRadius.lg,
+      gap: Spacing.sm,
+    },
+    imageActionText: {
+      fontWeight: '500',
+    },
+    // 图片预览弹窗样式
+    previewOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.95)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    previewCloseBtn: {
+      position: 'absolute',
+      top: 60,
+      right: 20,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 10,
+    },
+    previewImage: {
+      width: '90%',
+      height: '80%',
     },
   });
 };

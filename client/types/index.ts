@@ -1,4 +1,9 @@
 /**
+ * 项目类型枚举
+ */
+export type ProjectType = 'contract' | 'delivery';
+
+/**
  * 项目状态枚举
  */
 export type ProjectStatus = 'active' | 'completed' | 'paused';
@@ -7,6 +12,14 @@ export type ProjectStatus = 'active' | 'completed' | 'paused';
  * 开票状态枚举
  */
 export type InvoiceStatus = 'none' | 'partial' | 'completed';
+
+/**
+ * 项目类型名称映射
+ */
+export const ProjectTypeNames: Record<ProjectType, string> = {
+  contract: '工程项目',
+  delivery: '零星采购',
+};
 
 /**
  * 费用类型枚举
@@ -58,16 +71,20 @@ export interface ExpenseCategory {
 export interface Project {
   id: string;
   name: string;
+  projectType: ProjectType; // 项目类型：工程项目/零星采购
   description?: string; // 项目备注/描述
   manager?: string; // 项目负责人
   startDate?: string; // 开始日期
   endDate?: string; // 预计完成日期
-  contractAmount?: number; // 合同金额
+  contractAmount?: number; // 合同金额（工程项目用）
+  deliveryAmount?: number; // 送货总金额（零星采购用）
   receivedAmount: number; // 已收款金额
   settlementAmount?: number; // 结算金额
   invoiceStatus: InvoiceStatus; // 开票状态：未开票/部分开票/已开票
   invoiceAmount: number; // 已开票金额
   status: ProjectStatus;
+  // 合同图片（工程项目用）
+  contractImages?: string[]; // 合同图片URL列表
   createdAt: string;
   updatedAt: string;
 }
@@ -83,7 +100,12 @@ export interface Transaction {
   description: string;
   date: string;
   categoryId?: string; // 支出分类ID（可选）
+  purchaseUnit?: string; // 采购单位
+  isInvoiced?: boolean; // 是否开票
+  isPaid?: boolean; // 是否付款
+  images?: string[]; // 图片URL列表
   createdAt: string;
+  updatedAt?: string;
 }
 
 /**
@@ -113,6 +135,24 @@ export interface InvoiceRecord {
 }
 
 /**
+ * 送货记录数据模型（零星采购专用）
+ */
+export interface DeliveryRecord {
+  id: string;
+  projectId: string;
+  projectName: string;
+  description: string; // 送货描述
+  images: string[]; // 图片URL列表
+  date: string; // 送货日期
+  amount: number; // 送货金额
+  invoiceStatus: InvoiceStatus; // 开票状态
+  invoiceAmount: number; // 已开票金额
+  receivedAmount: number; // 已收款金额
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * 项目统计数据
  */
 export interface ProjectStats {
@@ -132,4 +172,5 @@ export interface ExportData {
   expenseCategories: ExpenseCategory[];
   paymentRecords?: PaymentRecord[];
   invoiceRecords?: InvoiceRecord[];
+  deliveryRecords?: DeliveryRecord[];
 }

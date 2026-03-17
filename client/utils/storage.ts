@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Project, Transaction, ExportData, ExpenseCategory, PaymentRecord, InvoiceRecord } from '@/types';
+import { Project, Transaction, ExportData, ExpenseCategory, PaymentRecord, InvoiceRecord, DeliveryRecord } from '@/types';
 
 const PROJECTS_KEY = '@project_accounting_projects';
 const TRANSACTIONS_KEY = '@project_accounting_transactions';
 const EXPENSE_CATEGORIES_KEY = '@project_accounting_expense_categories';
 const PAYMENT_RECORDS_KEY = '@project_accounting_payment_records';
 const INVOICE_RECORDS_KEY = '@project_accounting_invoice_records';
+const DELIVERY_RECORDS_KEY = '@project_accounting_delivery_records';
 
 /**
  * 项目数据存储工具
@@ -350,6 +351,7 @@ export const ExportUtils = {
     const expenseCategories = await ExpenseCategoryStorage.getAll();
     const paymentRecords = await PaymentRecordStorage.getAll();
     const invoiceRecords = await InvoiceRecordStorage.getAll();
+    const deliveryRecords = await DeliveryRecordStorage.getAll();
 
     return {
       version: '1.0.0',
@@ -359,6 +361,7 @@ export const ExportUtils = {
       expenseCategories,
       paymentRecords,
       invoiceRecords,
+      deliveryRecords,
     };
   },
 
@@ -378,6 +381,7 @@ export const ExportUtils = {
       await ExpenseCategoryStorage.clear();
       await PaymentRecordStorage.clear();
       await InvoiceRecordStorage.clear();
+      await DeliveryRecordStorage.clear();
 
       // 导入新数据
       await AsyncStorage.setItem(PROJECTS_KEY, JSON.stringify(data.projects));
@@ -385,6 +389,7 @@ export const ExportUtils = {
       await AsyncStorage.setItem(EXPENSE_CATEGORIES_KEY, JSON.stringify(data.expenseCategories));
       await AsyncStorage.setItem(PAYMENT_RECORDS_KEY, JSON.stringify(data.paymentRecords || []));
       await AsyncStorage.setItem(INVOICE_RECORDS_KEY, JSON.stringify(data.invoiceRecords || []));
+      await AsyncStorage.setItem(DELIVERY_RECORDS_KEY, JSON.stringify(data.deliveryRecords || []));
 
       return true;
     } catch (error) {
@@ -567,6 +572,120 @@ export const InvoiceRecordStorage = {
       return true;
     } catch (error) {
       console.error('清空开票记录失败:', error);
+      return false;
+    }
+  },
+};
+
+/**
+ * 送货记录数据存储工具
+ */
+export const DeliveryRecordStorage = {
+  /**
+   * 获取所有送货记录
+   */
+  async getAll(): Promise<DeliveryRecord[]> {
+    try {
+      const data = await AsyncStorage.getItem(DELIVERY_RECORDS_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (error) {
+      console.error('获取送货记录失败:', error);
+      return [];
+    }
+  },
+
+  /**
+   * 根据 ID 获取送货记录
+   */
+  async getById(id: string): Promise<DeliveryRecord | null> {
+    try {
+      const records = await this.getAll();
+      return records.find(r => r.id === id) || null;
+    } catch (error) {
+      console.error('获取送货记录失败:', error);
+      return null;
+    }
+  },
+
+  /**
+   * 根据项目 ID 获取送货记录
+   */
+  async getByProjectId(projectId: string): Promise<DeliveryRecord[]> {
+    try {
+      const records = await this.getAll();
+      return records.filter(r => r.projectId === projectId);
+    } catch (error) {
+      console.error('获取项目送货记录失败:', error);
+      return [];
+    }
+  },
+
+  /**
+   * 保存送货记录（新增或更新）
+   */
+  async save(record: DeliveryRecord): Promise<boolean> {
+    try {
+      const records = await this.getAll();
+      const index = records.findIndex(r => r.id === record.id);
+
+      if (index >= 0) {
+        // 更新现有记录
+        records[index] = {
+          ...record,
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        // 新增记录
+        records.push(record);
+      }
+
+      await AsyncStorage.setItem(DELIVERY_RECORDS_KEY, JSON.stringify(records));
+      return true;
+    } catch (error) {
+      console.error('保存送货记录失败:', error);
+      return false;
+    }
+  },
+
+  /**
+   * 删除送货记录
+   */
+  async delete(id: string): Promise<boolean> {
+    try {
+      let records = await this.getAll();
+      records = records.filter(r => r.id !== id);
+      await AsyncStorage.setItem(DELIVERY_RECORDS_KEY, JSON.stringify(records));
+      return true;
+    } catch (error) {
+      console.error('删除送货记录失败:', error);
+      return false;
+    }
+  },
+
+  /**
+   * 删除项目的所有送货记录
+   */
+  async deleteByProjectId(projectId: string): Promise<boolean> {
+    try {
+      let records = await this.getAll();
+      records = records.filter(r => r.projectId !== projectId);
+      await AsyncStorage.setItem(DELIVERY_RECORDS_KEY, JSON.stringify(records));
+      return true;
+    } catch (error) {
+      console.error('删除项目送货记录失败:', error);
+      return false;
+    }
+  },
+
+  /**
+   * 清空所有送货记录
+   */
+  async clear(): Promise<boolean> {
+    try {
+      await AsyncStorage.removeItem(DELIVERY_RECORDS_KEY);
+      return true;
+    } catch (error) {
+      console.error('清空送货记录失败:', error);
       return false;
     }
   },

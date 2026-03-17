@@ -1,17 +1,21 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { View, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { View, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Image, Modal } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
-import { Project, ProjectStatus, InvoiceStatus } from '@/types';
-import { ProjectStatusNames, InvoiceStatusNames } from '@/types';
+import { Project, ProjectStatus, InvoiceStatus, ProjectType } from '@/types';
+import { ProjectStatusNames, InvoiceStatusNames, ProjectTypeNames } from '@/types';
 import { ProjectStorage, PaymentRecordStorage, InvoiceRecordStorage } from '@/utils/storage';
 import { formatDate, normalizeDateString } from '@/utils/helpers';
+import { createFormDataFile } from '@/utils';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useTheme } from '@/hooks/useTheme';
-import { Spacing, BorderRadius } from '@/constants/theme';
+import { Spacing, BorderRadius, Theme } from '@/constants/theme';
 import { createStyles } from './styles';
+
+const EXPO_PUBLIC_BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || '';
 
 const StatusOption = ({ value, label, status, onPress }: { value: ProjectStatus; label: string; status: ProjectStatus; onPress: (value: ProjectStatus) => void }) => {
   const { theme } = useTheme();
@@ -55,12 +59,25 @@ const InvoiceStatusOption = ({ value, label, status, onPress }: { value: Invoice
   );
 };
 
-// 辅助函数：验证日期字符串并返回有效的 Date 对象
-// 辅助函数：验证日期字符串格式 (YYYY-MM-DD)
-const isValidDateString = (dateString: string | undefined): boolean => {
-  if (!dateString) return true; // 空值是有效的
-  const date = new Date(dateString);
-  return !isNaN(date.getTime());
+const ProjectTypeOption = ({ value, label, type, onPress }: { value: ProjectType; label: string; type: ProjectType; onPress: (value: ProjectType) => void }) => {
+  const { theme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
+  return (
+    <TouchableOpacity
+      style={[styles.statusOption, type === value && styles.statusOptionSelected]}
+      onPress={() => onPress(value)}
+    >
+      <View style={[styles.statusRadio, type === value && styles.statusRadioSelected]} />
+      <ThemedText
+        variant="body"
+        color={type === value ? theme.buttonPrimaryText : theme.textSecondary}
+        style={styles.statusLabel}
+      >
+        {label}
+      </ThemedText>
+    </TouchableOpacity>
+  );
 };
 
 export default function EditProjectScreen() {
@@ -70,28 +87,32 @@ export default function EditProjectScreen() {
   const { id } = useSafeSearchParams<{ id: string }>();
   const routerRef = useRef(router);
 
-  console.log('EditProjectScreen - 收到的路由参数 id:', id);
-
   const [project, setProject] = useState<Project | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [manager, setManager] = useState('');
+  const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [projectType, setProjectType] = useState<ProjectType>('contract');
   const [settlementAmount, setSettlementAmount] = useState('');
   const [contractAmount, setContractAmount] = useState('');
+  const [deliveryAmount, setDeliveryAmount] = useState('');
   const [receivedAmount, setReceivedAmount] = useState('');
   const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatus>('none');
   const [invoiceAmount, setInvoiceAmount] = useState('');
   const [status, setStatus] = useState<ProjectStatus>('active');
 
+  // 合同图片
+  const [contractImages, setContractImages] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
+
   useEffect(() => {
     async function loadProject() {
       if (!id) return;
 
-      console.log('开始加载项目，id:', id);
-
       const projectData = await ProjectStorage.getById(id);
-      console.log('从 storage 获取到的项目数据:', JSON.stringify(projectData, null, 2));
 
       if (!projectData) {
         alert('项目不存在');
@@ -101,30 +122,130 @@ export default function EditProjectScreen() {
 
       setProject(projectData);
       setName(projectData.name);
-      setDescription(projectData.description ?? '');
-      setManager(projectData.manager ?? '');
-      setEndDate(projectData.endDate ?? '');
-      setSettlementAmount(projectData.settlementAmount?.toString() ?? '');
-      setContractAmount(projectData.contractAmount?.toString() ?? '');
+      setDescription(projectData.description || '');
+      setManager(projectData.manager || '');
+      setStartDate(projectData.startDate || '');
+      setEndDate(projectData.endDate || '');
+      setProjectType(projectData.projectType);
+      setSettlementAmount(projectData.settlementAmount?.toString() || '');
+      setContractAmount(projectData.contractAmount?.toString() || '');
+      setDeliveryAmount(projectData.deliveryAmount?.toString() || '');
       setReceivedAmount(projectData.receivedAmount.toString());
-      setInvoiceStatus(projectData.invoiceStatus ?? 'none');
-      setInvoiceAmount(projectData.invoiceAmount?.toString() ?? '0');
+      setInvoiceStatus(projectData.invoiceStatus);
+      setInvoiceAmount(projectData.invoiceAmount.toString());
       setStatus(projectData.status);
-
-      console.log('项目数据已加载到表单状态');
+      // 合同图片
+      setContractImages(projectData.contractImages || []);
     }
     loadProject();
-  }, [id]); // 只依赖 id，移除 router 依赖
+  }, [id]);
+
+  // 拍照
+  const takePhoto = useCallback(async () => {
+    try {
+      // 检查相机权限
+      const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+      if (cameraStatus !== 'granted') {
+        alert('需要相机权限才能拍照');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const image = result.assets[0];
+      await uploadImage(image.uri);
+    } catch (error) {
+      console.error('拍照失败:', error);
+      alert('拍照失败，请重试');
+    }
+  }, []);
+
+  // 从相册选择
+  const pickImage = useCallback(async () => {
+    try {
+      // 检查相册权限
+      const { status: libraryStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (libraryStatus !== 'granted') {
+        alert('需要相册权限才能选择图片');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+        allowsMultipleSelection: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      // 上传所有选中的图片
+      for (const image of result.assets) {
+        await uploadImage(image.uri);
+      }
+    } catch (error) {
+      console.error('选择图片失败:', error);
+      alert('选择图片失败，请重试');
+    }
+  }, []);
+
+  // 上传图片到服务器
+  const uploadImage = useCallback(async (uri: string) => {
+    setIsUploading(true);
+    try {
+      const fileName = `contract_${Date.now()}.jpg`;
+      const formData = new FormData();
+      const file = await createFormDataFile(uri, fileName, 'image/jpeg');
+      formData.append('file', file as any);
+
+      /**
+       * 服务端文件：server/src/index.ts
+       * 接口：POST /api/v1/upload
+       * Body 参数：FormData with file
+       */
+      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.url) {
+        setContractImages(prev => [...prev, data.url]);
+      } else {
+        throw new Error(data.error || '上传失败');
+      }
+    } catch (error) {
+      console.error('上传图片失败:', error);
+      alert('上传图片失败，请重试');
+    } finally {
+      setIsUploading(false);
+    }
+  }, []);
+
+  // 删除图片
+  const removeImage = useCallback((index: number) => {
+    setContractImages(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // 预览图片
+  const openPreview = useCallback((uri: string) => {
+    setPreviewImage(uri);
+    setPreviewVisible(true);
+  }, []);
 
   const handleSave = useCallback(async () => {
-    console.log('handleSave 被调用');
-    console.log('当前 project:', project);
-    console.log('当前表单数据:', { name, description, manager, endDate, settlementAmount, contractAmount, receivedAmount, invoiceStatus, invoiceAmount, status });
-
-    if (!project) {
-      console.log('project 为空，无法保存');
-      return;
-    }
+    if (!project) return;
 
     if (!name.trim()) {
       alert('请输入项目名称');
@@ -154,20 +275,22 @@ export default function EditProjectScreen() {
       name: name.trim(),
       description: description.trim() || undefined,
       manager: manager.trim() || undefined,
+      startDate: projectType === 'contract' ? (normalizeDateString(startDate) || undefined) : undefined,
       endDate: normalizeDateString(endDate) || undefined,
-      contractAmount: contractAmount.trim() ? parseFloat(contractAmount) : undefined,
+      projectType,
+      contractAmount: projectType === 'contract' && contractAmount.trim() ? parseFloat(contractAmount) : undefined,
+      deliveryAmount: projectType === 'delivery' && deliveryAmount.trim() ? parseFloat(deliveryAmount) : undefined,
       receivedAmount: receivedAmountValue,
-      settlementAmount: settlementAmount.trim() ? parseFloat(settlementAmount) : undefined,
+      settlementAmount: projectType === 'contract' && settlementAmount.trim() ? parseFloat(settlementAmount) : undefined,
       invoiceStatus,
       invoiceAmount: invoiceAmountValue,
       status,
+      // 合同图片（仅工程项目）
+      contractImages: projectType === 'contract' && contractImages.length > 0 ? contractImages : undefined,
       updatedAt: new Date().toISOString(),
     };
 
-    console.log('准备保存项目:', JSON.stringify(updatedProject, null, 2));
-
     const success = await ProjectStorage.save(updatedProject);
-    console.log('保存结果:', success);
 
     if (success) {
       // 如果收款金额增加，创建新的收款记录
@@ -181,40 +304,39 @@ export default function EditProjectScreen() {
           date: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         });
-        console.log('创建收款记录:', paymentAmount);
       }
 
       // 如果开票金额增加，创建新的开票记录
       if (invoiceAmountChanged && invoiceAmountValue > project.invoiceAmount) {
-        const invoiceAmountDiff = invoiceAmountValue - project.invoiceAmount;
+        const invoiceAmountAdd = invoiceAmountValue - project.invoiceAmount;
         await InvoiceRecordStorage.save({
           id: `invoice-${Date.now()}`,
           projectId: project.id,
           projectName: project.name,
-          amount: invoiceAmountDiff,
+          amount: invoiceAmountAdd,
           date: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         });
-        console.log('创建开票记录:', invoiceAmountDiff);
       }
 
       routerRef.current.back();
     } else {
       alert('保存失败，请重试');
     }
-  }, [project, name, description, manager, endDate, settlementAmount, contractAmount, receivedAmount, invoiceStatus, invoiceAmount, status]); // 移除 router 依赖
+  }, [project, name, description, manager, startDate, endDate, projectType, settlementAmount, contractAmount, deliveryAmount, receivedAmount, invoiceStatus, invoiceAmount, status, contractImages]);
 
   if (!project) {
     return (
       <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
-        <ThemedView level="root" style={styles.container}>
-          <View style={styles.loadingContainer}>
-            <ThemedText variant="body" color={theme.textMuted}>加载中...</ThemedText>
-          </View>
+        <ThemedView level="root" style={styles.loadingContainer}>
+          <ThemedText variant="body" color={theme.textSecondary}>加载中...</ThemedText>
         </ThemedView>
       </Screen>
     );
   }
+
+  const isDelivery = projectType === 'delivery';
+  const isContract = projectType === 'contract';
 
   return (
     <Screen backgroundColor={theme.backgroundRoot} statusBarStyle={isDark ? 'light' : 'dark'}>
@@ -226,11 +348,7 @@ export default function EditProjectScreen() {
           <ThemedText variant="h3" color={theme.textPrimary} style={styles.headerTitle}>
             编辑项目
           </ThemedText>
-          <TouchableOpacity
-            style={styles.saveButton}
-            onPress={handleSave}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          >
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
             <ThemedText variant="body" color={theme.buttonPrimaryText}>保存</ThemedText>
           </TouchableOpacity>
         </View>
@@ -253,6 +371,23 @@ export default function EditProjectScreen() {
                 value={name}
                 onChangeText={setName}
               />
+            </View>
+
+            <View style={styles.formField}>
+              <ThemedText variant="body" color={theme.textPrimary} style={styles.fieldLabel}>
+                项目类型
+              </ThemedText>
+              <View style={styles.statusContainer}>
+                {(Object.keys(ProjectTypeNames) as ProjectType[]).map((key) => (
+                  <ProjectTypeOption 
+                    key={key} 
+                    value={key} 
+                    label={ProjectTypeNames[key]} 
+                    type={projectType}
+                    onPress={setProjectType}
+                  />
+                ))}
+              </View>
             </View>
 
             <View style={styles.formField}>
@@ -301,43 +436,134 @@ export default function EditProjectScreen() {
             </View>
           </ThemedView>
 
+          {/* 合同图片（仅工程项目显示） */}
+          {isContract && (
+            <ThemedView level="default" style={styles.formCard}>
+              <ThemedText variant="h4" color={theme.textSecondary} style={styles.formTitle}>
+                合同图片
+              </ThemedText>
+
+              {/* 图片网格 */}
+              {contractImages.length > 0 && (
+                <View style={styles.imageGrid}>
+                  {contractImages.map((uri, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.imageItem}
+                      onPress={() => openPreview(uri)}
+                      activeOpacity={0.8}
+                    >
+                      <Image source={{ uri }} style={styles.imageThumbnail} resizeMode="cover" />
+                      <TouchableOpacity
+                        style={[styles.imageDeleteBtn, { backgroundColor: theme.error }]}
+                        onPress={() => removeImage(index)}
+                      >
+                        <FontAwesome6 name="xmark" size={12} color="#fff" />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* 操作按钮 */}
+              <View style={styles.imageActions}>
+                <TouchableOpacity 
+                  style={[styles.imageActionBtn, { backgroundColor: theme.primary }]}
+                  onPress={takePhoto}
+                  disabled={isUploading}
+                >
+                  {isUploading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <FontAwesome6 name="camera" size={20} color="#fff" />
+                      <ThemedText variant="body" color="#fff" style={styles.imageActionText}>
+                        拍照
+                      </ThemedText>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.imageActionBtn, { backgroundColor: theme.success }]}
+                  onPress={pickImage}
+                  disabled={isUploading}
+                >
+                  {isUploading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <FontAwesome6 name="images" size={20} color="#fff" />
+                      <ThemedText variant="body" color="#fff" style={styles.imageActionText}>
+                        相册
+                      </ThemedText>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <ThemedText variant="caption" color={theme.textMuted} style={{ textAlign: 'center', marginTop: Spacing.sm }}>
+                点击缩略图可查看大图
+              </ThemedText>
+            </ThemedView>
+          )}
+
           {/* 财务信息 */}
           <ThemedView level="default" style={styles.formCard}>
             <ThemedText variant="h4" color={theme.textSecondary} style={styles.formTitle}>
               财务信息
             </ThemedText>
 
-            <View style={styles.formField}>
-              <ThemedText variant="body" color={theme.textPrimary} style={styles.fieldLabel}>
-                合同金额（元）
-              </ThemedText>
-              <TextInput
-                style={[styles.input, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
-                placeholder="请输入合同金额"
-                placeholderTextColor={theme.textMuted}
-                value={contractAmount}
-                onChangeText={setContractAmount}
-                keyboardType="decimal-pad"
-              />
-            </View>
+            {/* 根据项目类型显示不同的金额字段 */}
+            {isDelivery ? (
+              <View style={styles.formField}>
+                <ThemedText variant="body" color={theme.textPrimary} style={styles.fieldLabel}>
+                  送货总额（元）
+                </ThemedText>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
+                  placeholder="请输入送货总额"
+                  placeholderTextColor={theme.textMuted}
+                  value={deliveryAmount}
+                  onChangeText={setDeliveryAmount}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            ) : (
+              <>
+                <View style={styles.formField}>
+                  <ThemedText variant="body" color={theme.textPrimary} style={styles.fieldLabel}>
+                    合同金额（元）
+                  </ThemedText>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
+                    placeholder="请输入合同金额"
+                    placeholderTextColor={theme.textMuted}
+                    value={contractAmount}
+                    onChangeText={setContractAmount}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+
+                <View style={styles.formField}>
+                  <ThemedText variant="body" color={theme.textPrimary} style={styles.fieldLabel}>
+                    结算金额（元）
+                  </ThemedText>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
+                    placeholder="请输入结算金额（可选）"
+                    placeholderTextColor={theme.textMuted}
+                    value={settlementAmount}
+                    onChangeText={setSettlementAmount}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </>
+            )}
 
             <View style={styles.formField}>
               <ThemedText variant="body" color={theme.textPrimary} style={styles.fieldLabel}>
-                结算金额（元）
-              </ThemedText>
-              <TextInput
-                style={[styles.input, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
-                placeholder="请输入结算金额"
-                placeholderTextColor={theme.textMuted}
-                value={settlementAmount}
-                onChangeText={setSettlementAmount}
-                keyboardType="decimal-pad"
-              />
-            </View>
-
-            <View style={styles.formField}>
-              <ThemedText variant="body" color={theme.textPrimary} style={styles.fieldLabel}>
-                已收款金额（元）<ThemedText style={{ color: theme.error }}>*</ThemedText>
+                已收款金额（元）
               </ThemedText>
               <TextInput
                 style={[styles.input, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
@@ -388,30 +614,68 @@ export default function EditProjectScreen() {
             </View>
           </ThemedView>
 
-          {/* 时间规划 */}
+          {/* 日期信息 */}
           <ThemedView level="default" style={styles.formCard}>
             <ThemedText variant="h4" color={theme.textSecondary} style={styles.formTitle}>
-              时间规划
+              日期信息
             </ThemedText>
+
+            {!isDelivery && (
+              <View style={styles.formField}>
+                <ThemedText variant="body" color={theme.textPrimary} style={styles.fieldLabel}>
+                  开始日期
+                </ThemedText>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
+                  placeholder="请输入日期，格式：YYYY-MM-DD"
+                  placeholderTextColor={theme.textMuted}
+                  value={startDate}
+                  onChangeText={setStartDate}
+                />
+              </View>
+            )}
 
             <View style={styles.formField}>
               <ThemedText variant="body" color={theme.textPrimary} style={styles.fieldLabel}>
-                预计完成日期
+                {isDelivery ? '送货日期' : '工程竣工日期'}
               </ThemedText>
               <TextInput
                 style={[styles.input, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
-                placeholder="YYYY-MM-DD"
+                placeholder="请输入日期，格式：YYYY-MM-DD"
                 placeholderTextColor={theme.textMuted}
                 value={endDate}
                 onChangeText={setEndDate}
-                maxLength={10}
               />
             </View>
           </ThemedView>
 
-          <View style={{ height: Spacing['2xl'] }} />
+          <View style={{ height: Spacing['5xl'] }} />
         </ScrollView>
       </ThemedView>
+
+      {/* 图片预览弹窗 */}
+      <Modal
+        visible={previewVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewVisible(false)}
+      >
+        <View style={styles.previewOverlay}>
+          <TouchableOpacity 
+            style={styles.previewCloseBtn}
+            onPress={() => setPreviewVisible(false)}
+          >
+            <FontAwesome6 name="xmark" size={24} color="#fff" />
+          </TouchableOpacity>
+          {previewImage && (
+            <Image 
+              source={{ uri: previewImage }} 
+              style={styles.previewImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
     </Screen>
   );
 }

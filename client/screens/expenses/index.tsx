@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, FlatList, TouchableOpacity, Alert, Modal } from 'react-native';
+import { View, FlatList, TouchableOpacity, Modal } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { Transaction, Project, ExpenseCategory } from '@/types';
@@ -11,10 +11,10 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useTheme } from '@/hooks/useTheme';
-import { Spacing, BorderRadius } from '@/constants/theme';
+import { Spacing, BorderRadius, Theme } from '@/constants/theme';
 import { StyleSheet } from 'react-native';
 
-const styles = StyleSheet.create({
+const createStyles = (theme: Theme) => StyleSheet.create({
   filterRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -69,10 +69,54 @@ const styles = StyleSheet.create({
   optionItemLast: {
     borderBottomWidth: 0,
   },
+  // 横向列表项样式
+  transactionCard: {
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    boxShadow: '0px 2px 8px rgba(79, 70, 229, 0.08)',
+  },
+  // 第一行：左侧金额+日期+状态 | 右侧描述
+  firstRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  // 第一行左侧：金额和日期
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
+  dateText: {
+    marginLeft: Spacing.xs,
+  },
+  // 第二行：项目 | 分类 | 采购单位 | 图片
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
+  infoSeparator: {
+    marginHorizontal: 2,
+  },
+  // 标签样式
+  miniTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    gap: 2,
+  },
 });
 
 export default function ExpensesScreen() {
   const { theme, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const router = useSafeRouter();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -111,61 +155,123 @@ export default function ExpensesScreen() {
     return filteredTransactions.reduce((sum, tx) => sum + tx.amount, 0);
   }, [filteredTransactions]);
 
-  const renderTransactionItem = ({ item }: { item: Transaction }) => {
+  const handleTransactionPress = useCallback((transactionId: string) => {
+    router.push('/expenses/edit', { id: transactionId });
+  }, [router]);
+
+  const renderTransactionItem = useCallback(({ item }: { item: Transaction }) => {
     const project = projects.find(p => p.id === item.projectId);
     const category = categories.find(c => c.id === item.categoryId);
+    const hasImages = item.images && item.images.length > 0;
 
     return (
-      <ThemedView level="default" style={{
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        marginBottom: Spacing.sm,
-        boxShadow: '0px 2px 8px rgba(79, 70, 229, 0.08)',
-      }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.sm }}>
-          <View style={{ flex: 1 }}>
-            <ThemedText variant="h4" color={theme.textPrimary} style={{ marginBottom: 4 }}>
-              {TransactionTypeNames[item.type]}
-            </ThemedText>
-            {category && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                <View style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 6,
-                  backgroundColor: category.color,
-                  marginRight: 6,
-                }} />
-                <ThemedText variant="caption" color={theme.textSecondary}>
-                  {category.name}
-                </ThemedText>
-              </View>
-            )}
-            {project && (
-              <ThemedText variant="caption" color={theme.textMuted}>
-                {project.name}
+      <TouchableOpacity
+        onPress={() => handleTransactionPress(item.id)}
+        activeOpacity={0.7}
+      >
+        <ThemedView level="default" style={styles.transactionCard}>
+          {/* 第一行：左侧金额+日期+状态+图片 | 右侧描述 */}
+          <View style={styles.firstRow}>
+            <View style={styles.amountRow}>
+              <ThemedText variant="h4" color={theme.primary} style={{ fontWeight: '600' }}>
+                {formatCurrency(item.amount)}
+              </ThemedText>
+              <ThemedText variant="caption" color={theme.textMuted} style={styles.dateText}>
+                {formatDate(item.date)}
+              </ThemedText>
+              {/* 状态标签 */}
+              {!item.isPaid && (
+                <View style={[styles.miniTag, { backgroundColor: theme.error + '20' }]}>
+                  <ThemedText variant="caption" color={theme.error} style={{ fontSize: 10 }}>
+                    未付款
+                  </ThemedText>
+                </View>
+              )}
+              {item.isPaid && (
+                <View style={[styles.miniTag, { backgroundColor: theme.primary + '20' }]}>
+                  <ThemedText variant="caption" color={theme.primary} style={{ fontSize: 10 }}>
+                    已付款
+                  </ThemedText>
+                </View>
+              )}
+              {!item.isInvoiced && (
+                <View style={[styles.miniTag, { backgroundColor: theme.error + '20' }]}>
+                  <ThemedText variant="caption" color={theme.error} style={{ fontSize: 10 }}>
+                    未开票
+                  </ThemedText>
+                </View>
+              )}
+              {item.isInvoiced && (
+                <View style={[styles.miniTag, { backgroundColor: theme.success + '20' }]}>
+                  <ThemedText variant="caption" color={theme.success} style={{ fontSize: 10 }}>
+                    已开票
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+            {/* 右侧描述 */}
+            {item.description && (
+              <ThemedText variant="body" color={theme.error} style={{ fontWeight: '600', maxWidth: '40%' }} numberOfLines={1}>
+                {item.description}
               </ThemedText>
             )}
           </View>
-          <ThemedText variant="h4" color={theme.primary} style={{ fontWeight: '600' }}>
-            {formatCurrency(item.amount)}
-          </ThemedText>
-        </View>
 
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <ThemedText variant="caption" color={theme.textMuted}>
-            {formatDate(item.date)}
-          </ThemedText>
-        </View>
-
-        {item.description ? (
-          <ThemedText variant="body" color={theme.textSecondary} style={{ marginTop: Spacing.sm }}>
-            {item.description}
-          </ThemedText>
-        ) : null}
-      </ThemedView>
+          {/* 第二行：项目 | 分类 | 图片数量 | 采购单位（右上角） → */}
+          <View style={styles.infoRow}>
+            {project && (
+              <>
+                <FontAwesome6 name="folder" size={10} color={theme.success} />
+                <ThemedText variant="caption" color={theme.success} style={{ fontWeight: '500' }} numberOfLines={1}>
+                  {project.name}
+                </ThemedText>
+              </>
+            )}
+            {project && category && (
+              <ThemedText variant="caption" color={theme.border} style={styles.infoSeparator}>
+                |
+              </ThemedText>
+            )}
+            {category && (
+              <>
+                <FontAwesome6 name="tag" size={10} color="#F59E0B" />
+                <ThemedText variant="caption" color="#F59E0B" style={{ fontWeight: '500' }} numberOfLines={1}>
+                  {category.name}
+                </ThemedText>
+              </>
+            )}
+            {category && hasImages && (
+              <ThemedText variant="caption" color={theme.border} style={styles.infoSeparator}>
+                |
+              </ThemedText>
+            )}
+            {/* 图片数量标签 */}
+            {hasImages && (
+              <View style={[styles.miniTag, { backgroundColor: theme.accent + '20' }]}>
+                <FontAwesome6 name="image" size={8} color={theme.accent} />
+                <ThemedText variant="caption" color={theme.accent} style={{ fontSize: 10 }}>
+                  {item.images!.length}张
+                </ThemedText>
+              </View>
+            )}
+            
+            {/* 右侧：采购单位 + 箭头 */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 'auto', gap: Spacing.xs }}>
+              {item.purchaseUnit && (
+                <>
+                  <FontAwesome6 name="building" size={10} color="#3B82F6" />
+                  <ThemedText variant="caption" color="#3B82F6" style={{ fontWeight: '600' }} numberOfLines={1}>
+                    {item.purchaseUnit}
+                  </ThemedText>
+                </>
+              )}
+              <FontAwesome6 name="chevron-right" size={14} color={theme.textMuted} />
+            </View>
+          </View>
+        </ThemedView>
+      </TouchableOpacity>
     );
-  };
+  }, [projects, categories, theme, styles, handleTransactionPress]);
 
   const renderFilterButton = () => {
     if (selectedCategory || selectedProject) {
@@ -305,11 +411,12 @@ export default function ExpensesScreen() {
                 暂无支出记录
               </ThemedText>
               <ThemedText variant="body" color={theme.textMuted}>
-                在项目中添加交易记录后，会显示在这里
+                点击右下角按钮添加支出
               </ThemedText>
             </View>
           }
         />
+        
         <TouchableOpacity
           style={{
             position: 'absolute',
