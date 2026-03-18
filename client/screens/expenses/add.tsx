@@ -1,11 +1,11 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { View, ScrollView, TouchableOpacity, TextInput, Modal, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Alert, FlatList, Image, ActivityIndicator } from 'react-native';
+import { View, ScrollView, TouchableOpacity, TextInput, Modal, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Alert, FlatList, Image, ActivityIndicator, Text } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeRouter } from '@/hooks/useSafeRouter';
 import { Transaction, Project, ExpenseCategory } from '@/types';
-import { TransactionStorage, ProjectStorage, ExpenseCategoryStorage } from '@/utils/storage';
+import { TransactionStorage, ProjectStorage, ExpenseCategoryStorage, DescriptionTemplateStorage, DescriptionTemplate } from '@/utils/storage';
 import { generateUUID, formatDate } from '@/utils/helpers';
-import { createFormDataFile } from '@/utils';
+import { uploadMultipleFiles } from '@/utils';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -199,6 +199,7 @@ export default function AddExpenseScreen() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  const [templates, setTemplates] = useState<DescriptionTemplate[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
@@ -207,6 +208,7 @@ export default function AddExpenseScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showProjectSelector, setShowProjectSelector] = useState(false);
   const [showCategorySelector, setShowCategorySelector] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   
   // 新增字段
   const [purchaseUnit, setPurchaseUnit] = useState('');
@@ -216,12 +218,21 @@ export default function AddExpenseScreen() {
   const [uploading, setUploading] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [projData, catData] = await Promise.all([
+    const [projData, catData, templateData] = await Promise.all([
       ProjectStorage.getAll(),
       ExpenseCategoryStorage.getAll(),
+      DescriptionTemplateStorage.getFrequent(10),
     ]);
     setProjects(projData);
     setCategories(catData);
+    setTemplates(templateData);
+
+    // 初始化默认模板
+    if (templateData.length === 0) {
+      await DescriptionTemplateStorage.initDefaultTemplates();
+      const newTemplates = await DescriptionTemplateStorage.getFrequent(10);
+      setTemplates(newTemplates);
+    }
 
     // 默认选择第一个项目
     if (projData.length > 0 && !selectedProjectId) {
@@ -284,32 +295,7 @@ export default function AddExpenseScreen() {
 
   // 上传图片到服务器
   const uploadImages = useCallback(async (localUris: string[]): Promise<string[]> => {
-    const uploadedUrls: string[] = [];
-    const baseUrl = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
-
-    for (const uri of localUris) {
-      try {
-        const fileName = `expense_${Date.now()}.jpg`;
-        const file = await createFormDataFile(uri, fileName, 'image/jpeg');
-
-        const formData = new FormData();
-        formData.append('file', file as any);
-
-        const response = await fetch(`${baseUrl}/api/v1/upload`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        const data = await response.json();
-        if (data.success && data.url) {
-          uploadedUrls.push(data.url);
-        }
-      } catch (error) {
-        console.error('上传图片失败:', error);
-      }
-    }
-
-    return uploadedUrls;
+    return await uploadMultipleFiles(localUris, 'expense', 'image/jpeg');
   }, []);
 
   const handleSave = async () => {
@@ -494,6 +480,38 @@ export default function AddExpenseScreen() {
               <ThemedText variant="body" color={theme.textPrimary} style={styles.fieldLabel}>
                 描述<ThemedText style={{ color: theme.error }}>*</ThemedText>
               </ThemedText>
+              {/* 快捷模板 */}
+              {templates.length > 0 && (
+                <View style={{ marginBottom: Spacing.sm }}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: Spacing.xs }}>
+                      {templates.slice(0, 6).map((tpl) => (
+                        <TouchableOpacity
+                          key={tpl.id}
+                          style={{
+                            paddingHorizontal: Spacing.md,
+                            paddingVertical: Spacing.xs,
+                            borderRadius: BorderRadius.full,
+                            backgroundColor: theme.backgroundTertiary,
+                            marginRight: Spacing.xs,
+                          }}
+                          onPress={() => {
+                            setDescription(tpl.description);
+                            if (tpl.categoryId) {
+                              setSelectedCategoryId(tpl.categoryId);
+                            }
+                            DescriptionTemplateStorage.incrementUsage(tpl.id);
+                          }}
+                        >
+                          <ThemedText variant="small" color={theme.textSecondary}>
+                            {tpl.name}
+                          </ThemedText>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
               <TextInput
                 style={[styles.input, styles.textArea, { backgroundColor: theme.backgroundTertiary, color: theme.textPrimary }]}
                 placeholder="请输入支出描述"

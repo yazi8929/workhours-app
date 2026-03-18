@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { DeliveryRecordStorage, ProjectStorage } from '@/utils/storage';
 import { generateUUID, formatDate, formatCurrency } from '@/utils/helpers';
-import { createFormDataFile } from '@/utils';
+import { uploadMultipleFiles } from '@/utils';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -193,32 +193,7 @@ export default function EditDeliveryRecordScreen() {
 
   // 上传新图片到服务器
   const uploadNewImages = useCallback(async (localUris: string[]): Promise<string[]> => {
-    const uploadedUrls: string[] = [];
-    const baseUrl = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
-
-    for (const uri of localUris) {
-      try {
-        const fileName = `delivery_${Date.now()}.jpg`;
-        const file = await createFormDataFile(uri, fileName, 'image/jpeg');
-
-        const formData = new FormData();
-        formData.append('file', file as any);
-
-        const response = await fetch(`${baseUrl}/api/v1/upload`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        const data = await response.json();
-        if (data.success && data.url) {
-          uploadedUrls.push(data.url);
-        }
-      } catch (error) {
-        console.error('上传图片失败:', error);
-      }
-    }
-
-    return uploadedUrls;
+    return await uploadMultipleFiles(localUris, 'delivery', 'image/jpeg');
   }, []);
 
   // 保存送货记录

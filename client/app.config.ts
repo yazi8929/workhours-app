@@ -35,7 +35,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
-        "plugins": [
+    "plugins": [
       'expo-router',
       [
         "expo-image-picker",

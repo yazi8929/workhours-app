@@ -27,6 +27,87 @@ export async function createFormDataFile(
 }
 
 /**
+ * 使用 XMLHttpRequest 上传单个文件（解决 Android FormData 兼容性问题）
+ * @param uri 文件 URI
+ * @param fileName 文件名
+ * @param mimeType MIME 类型
+ * @returns 上传成功返回 URL，失败返回 null
+ */
+export function uploadFileViaXHR(
+  uri: string,
+  fileName: string,
+  mimeType: string
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const baseUrl = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+    const xhr = new XMLHttpRequest();
+    
+    xhr.open('POST', `${baseUrl}/api/v1/upload`);
+    xhr.setRequestHeader('Accept', 'application/json');
+    
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          if (response.success && response.url) {
+            resolve(response.url);
+          } else {
+            console.error('上传响应异常:', response);
+            resolve(null);
+          }
+        } catch (e) {
+          console.error('解析响应失败:', e);
+          resolve(null);
+        }
+      } else {
+        console.error('上传失败，状态码:', xhr.status);
+        resolve(null);
+      }
+    };
+    
+    xhr.onerror = (e) => {
+      console.error('上传网络错误:', e);
+      resolve(null);
+    };
+    
+    const formData = new FormData();
+    formData.append('file', {
+      uri: uri,
+      type: mimeType,
+      name: fileName,
+    } as any);
+    
+    xhr.send(formData);
+  });
+}
+
+/**
+ * 批量上传多个文件
+ * @param uris 文件 URI 数组
+ * @param namePrefix 文件名前缀
+ * @param mimeType MIME 类型
+ * @returns 上传成功的 URL 数组
+ */
+export async function uploadMultipleFiles(
+  uris: string[],
+  namePrefix: string = 'file',
+  mimeType: string = 'image/jpeg'
+): Promise<string[]> {
+  const uploadedUrls: string[] = [];
+  
+  for (let i = 0; i < uris.length; i++) {
+    const uri = uris[i];
+    const fileName = `${namePrefix}_${Date.now()}_${i}.jpg`;
+    const url = await uploadFileViaXHR(uri, fileName, mimeType);
+    if (url) {
+      uploadedUrls.push(url);
+    }
+  }
+  
+  return uploadedUrls;
+}
+
+/**
  * 构建文件或图片完整的URL
  * @param url 相对或绝对路径
  * @param w 宽度 (px) - 自动向下取整

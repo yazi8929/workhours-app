@@ -690,3 +690,152 @@ export const DeliveryRecordStorage = {
     }
   },
 };
+
+/**
+ * 常用描述模板
+ */
+export interface DescriptionTemplate {
+  id: string;
+  name: string;
+  description: string;
+  categoryId?: string;
+  usageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const DESCRIPTION_TEMPLATES_KEY = '@project_accounting_description_templates';
+
+/**
+ * 描述模板存储工具
+ */
+export const DescriptionTemplateStorage = {
+  /**
+   * 获取所有模板
+   */
+  async getAll(): Promise<DescriptionTemplate[]> {
+    try {
+      const data = await AsyncStorage.getItem(DESCRIPTION_TEMPLATES_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (error) {
+      console.error('获取描述模板失败:', error);
+      return [];
+    }
+  },
+
+  /**
+   * 获取常用模板（按使用次数排序）
+   */
+  async getFrequent(limit: number = 10): Promise<DescriptionTemplate[]> {
+    try {
+      const templates = await this.getAll();
+      return templates
+        .sort((a, b) => b.usageCount - a.usageCount)
+        .slice(0, limit);
+    } catch (error) {
+      console.error('获取常用模板失败:', error);
+      return [];
+    }
+  },
+
+  /**
+   * 保存模板
+   */
+  async save(template: DescriptionTemplate): Promise<boolean> {
+    try {
+      const templates = await this.getAll();
+      const index = templates.findIndex(t => t.id === template.id);
+
+      if (index >= 0) {
+        templates[index] = {
+          ...template,
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        templates.push(template);
+      }
+
+      await AsyncStorage.setItem(DESCRIPTION_TEMPLATES_KEY, JSON.stringify(templates));
+      return true;
+    } catch (error) {
+      console.error('保存描述模板失败:', error);
+      return false;
+    }
+  },
+
+  /**
+   * 增加使用次数
+   */
+  async incrementUsage(id: string): Promise<boolean> {
+    try {
+      const templates = await this.getAll();
+      const index = templates.findIndex(t => t.id === id);
+
+      if (index >= 0) {
+        templates[index].usageCount += 1;
+        templates[index].updatedAt = new Date().toISOString();
+        await AsyncStorage.setItem(DESCRIPTION_TEMPLATES_KEY, JSON.stringify(templates));
+      }
+
+      return true;
+    } catch (error) {
+      console.error('更新模板使用次数失败:', error);
+      return false;
+    }
+  },
+
+  /**
+   * 删除模板
+   */
+  async delete(id: string): Promise<boolean> {
+    try {
+      let templates = await this.getAll();
+      templates = templates.filter(t => t.id !== id);
+      await AsyncStorage.setItem(DESCRIPTION_TEMPLATES_KEY, JSON.stringify(templates));
+      return true;
+    } catch (error) {
+      console.error('删除描述模板失败:', error);
+      return false;
+    }
+  },
+
+  /**
+   * 初始化默认模板
+   */
+  async initDefaultTemplates(): Promise<boolean> {
+    try {
+      const existing = await this.getAll();
+      if (existing.length > 0) return true;
+
+      const defaultTemplates: DescriptionTemplate[] = [
+        { id: '1', name: '材料采购', description: '材料采购', usageCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: '2', name: '人工费', description: '人工费', usageCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: '3', name: '设备租赁', description: '设备租赁费', usageCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: '4', name: '运输费', description: '运输费', usageCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: '5', name: '餐饮费', description: '工人餐饮费', usageCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: '6', name: '住宿费', description: '工人住宿费', usageCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: '7', name: '水电费', description: '水电费', usageCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        { id: '8', name: '办公用品', description: '办公用品采购', usageCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      ];
+
+      await AsyncStorage.setItem(DESCRIPTION_TEMPLATES_KEY, JSON.stringify(defaultTemplates));
+      return true;
+    } catch (error) {
+      console.error('初始化默认模板失败:', error);
+      return false;
+    }
+  },
+
+  /**
+   * 清空所有模板
+   */
+  async clear(): Promise<boolean> {
+    try {
+      await AsyncStorage.removeItem(DESCRIPTION_TEMPLATES_KEY);
+      return true;
+    } catch (error) {
+      console.error('清空描述模板失败:', error);
+      return false;
+    }
+  },
+};

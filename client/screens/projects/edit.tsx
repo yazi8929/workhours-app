@@ -6,7 +6,7 @@ import { Project, ProjectStatus, InvoiceStatus, ProjectType } from '@/types';
 import { ProjectStatusNames, InvoiceStatusNames, ProjectTypeNames } from '@/types';
 import { ProjectStorage, PaymentRecordStorage, InvoiceRecordStorage } from '@/utils/storage';
 import { formatDate, normalizeDateString } from '@/utils/helpers';
-import { createFormDataFile } from '@/utils';
+import { uploadMultipleFiles } from '@/utils';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -203,27 +203,12 @@ export default function EditProjectScreen() {
   const uploadImage = useCallback(async (uri: string) => {
     setIsUploading(true);
     try {
-      const fileName = `contract_${Date.now()}.jpg`;
-      const formData = new FormData();
-      const file = await createFormDataFile(uri, fileName, 'image/jpeg');
-      formData.append('file', file as any);
+      const uploadedUrls = await uploadMultipleFiles([uri], 'contract', 'image/jpeg');
 
-      /**
-       * 服务端文件：server/src/index.ts
-       * 接口：POST /api/v1/upload
-       * Body 参数：FormData with file
-       */
-      const response = await fetch(`${EXPO_PUBLIC_BACKEND_BASE_URL}/api/v1/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (data.success && data.url) {
-        setContractImages(prev => [...prev, data.url]);
+      if (uploadedUrls.length > 0 && uploadedUrls[0]) {
+        setContractImages(prev => [...prev, uploadedUrls[0]]);
       } else {
-        throw new Error(data.error || '上传失败');
+        throw new Error('上传失败');
       }
     } catch (error) {
       console.error('上传图片失败:', error);

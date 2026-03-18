@@ -390,7 +390,19 @@ export default function DataScreen() {
 
       await (FileSystem as any).writeAsStringAsync(fileUri, JSON.stringify(data, null, 2));
 
-      if (Platform.OS === 'android') {
+      if (Platform.OS === 'web') {
+        // Web端：创建下载链接
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showCustomAlert('导出成功', `文件已下载：${fileName}`, [{ text: '确定', style: 'default' }]);
+      } else if (Platform.OS === 'android') {
         const permissions = await (FileSystem as any).StorageAccessFramework.requestDirectoryPermissionsAsync();
         if (permissions.granted) {
           const directoryUri = permissions.directoryUri;
@@ -413,6 +425,113 @@ export default function DataScreen() {
       showCustomAlert('导出失败', '请重试或检查权限设置', [{ text: '确定', style: 'default' }]);
     }
   };
+
+  // 导出Excel报表
+  const handleExportExcel = useCallback(async () => {
+    try {
+      const baseUrl = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
+      
+      // 准备数据
+      const [projectData, transactionData, deliveryData, paymentData, categories] = await Promise.all([
+        ProjectStorage.getAll(),
+        TransactionStorage.getAll(),
+        DeliveryRecordStorage.getAll(),
+        PaymentRecordStorage.getAll(),
+        ExpenseCategoryStorage.getAll(),
+      ]);
+
+      // 计算项目汇总
+      const projectSummaries = await Promise.all(
+        projectData.map(async (p) => {
+          const stats = { totalIncome: p.receivedAmount, totalExpense: 0, netProfit: 0 };
+          const projectTransactions = transactionData.filter(t => t.projectId === p.id);
+          stats.totalExpense = projectTransactions.reduce((sum, t) => sum + t.amount, 0);
+          stats.netProfit = stats.totalIncome - stats.totalExpense;
+          return {
+            name: p.name,
+            typeName: p.projectType === 'delivery' ? '零星采购' : '工程项目',
+            statusName: p.status === 'active' ? '进行中' : p.status === 'completed' ? '已完成' : '已暂停',
+            totalExpense: stats.totalExpense,
+            totalIncome: stats.totalIncome,
+            netProfit: stats.netProfit,
+            profitRate: stats.totalIncome > 0 ? ((stats.netProfit / stats.totalIncome) * 100).toFixed(1) : null,
+          };
+        })
+      );
+
+      // 支出明细
+      const transactionDetails = transactionData.map(t => {
+        const project = projectData.find(p => p.id === t.projectId);
+        const category = categories.find(c => c.id === t.categoryId);
+        return {
+          ...t,
+          projectName: project?.name || '',
+          categoryName: category?.name || '',
+        };
+      });
+
+      const response = await fetch(`${baseUrl}/api/v1/export/excel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'report',
+          data: {
+            expenses: transactionDetails,
+            incomes: paymentData,
+            summary: {
+              totalIncome: paymentData.reduce((sum, p) => sum + p.amount, 0),
+              totalExpense: transactionData.reduce((sum, t) => sum + t.amount, 0),
+              netProfit: paymentData.reduce((sum, p) => sum + p.amount, 0) - transactionData.reduce((sum, t) => sum + t.amount, 0),
+            },
+          },
+          projectName: 'all',
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success && result.url) {
+        if (Platform.OS === 'web') {
+          // Web端：直接打开下载链接
+          showCustomAlert(
+            '导出成功',
+            'Excel报表已生成，点击确定下载',
+            [
+              { text: '取消', style: 'cancel' },
+              {
+                text: '下载',
+                onPress: () => {
+                  window.open(result.url, '_blank');
+                },
+              },
+            ]
+          );
+        } else {
+          showCustomAlert(
+            '导出成功',
+            'Excel报表已生成，点击确定分享',
+            [
+              { text: '取消', style: 'cancel' },
+              {
+                text: '分享',
+                onPress: async () => {
+                  await Share.share({
+                    url: result.url,
+                    message: '财务报表导出',
+                  });
+                },
+              },
+            ]
+          );
+        }
+      } else {
+        showCustomAlert('导出失败', result.error || '未知错误', [{ text: '确定', style: 'default' }]);
+      }
+    } catch (error) {
+      console.error('导出Excel失败:', error);
+      showCustomAlert('导出失败', '请检查网络连接后重试', [{ text: '确定', style: 'default' }]);
+    }
+  }, [showCustomAlert]);
 
   const handleImport = async () => {
     try {
@@ -537,10 +656,18 @@ export default function DataScreen() {
             />
 
             <DataAction
+              icon="file-excel"
+              title="导出Excel报表"
+              description="生成财务收支报表Excel文件"
+              color={theme.success}
+              onPress={handleExportExcel}
+            />
+
+            <DataAction
               icon="upload"
               title="导入数据"
               description="从 JSON 文件导入数据（将覆盖现有数据）"
-              color={theme.success}
+              color={theme.accent}
               onPress={handleImport}
             />
           </ThemedView>

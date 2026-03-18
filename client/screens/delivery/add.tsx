@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { View, ScrollView, TouchableOpacity, TextInput, Alert, Image, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useSafeRouter, useSafeSearchParams } from '@/hooks/useSafeRouter';
 import { DeliveryRecordStorage, ProjectStorage } from '@/utils/storage';
 import { generateUUID, formatDate, formatCurrency } from '@/utils/helpers';
+import { uploadMultipleFiles } from '@/utils';
 import { Screen } from '@/components/Screen';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -68,10 +70,17 @@ export default function AddDeliveryRecordScreen() {
   // 加载项目信息
   React.useEffect(() => {
     async function loadProject() {
-      if (!projectId) return;
+      console.log('送货记录添加页面，项目ID:', projectId);
+      if (!projectId) {
+        console.log('警告：没有项目ID');
+        return;
+      }
       const project = await ProjectStorage.getById(projectId);
       if (project) {
+        console.log('加载项目成功:', project.name);
         setProjectName(project.name);
+      } else {
+        console.log('警告：项目不存在');
       }
     }
     loadProject();
@@ -114,7 +123,7 @@ export default function AddDeliveryRecordScreen() {
 
     if (!result.canceled) {
       const newUris = result.assets.map(asset => asset.uri);
-      setImages(prev => [...prev, ...newUris].slice(0, 9));
+      setImages(prev => [...prev, ...newUris].slice(0, 9)); // 最多9张
     }
   }, []);
 
@@ -123,70 +132,10 @@ export default function AddDeliveryRecordScreen() {
     setImages(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  // 上传单张图片 - 使用 XMLHttpRequest
-  const uploadSingleImage = useCallback((uri: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const baseUrl = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
-      const fileName = `delivery_${Date.now()}.jpg`;
-      
-      // 构建 FormData
-      const formData = new FormData();
-      formData.append('file', {
-        uri: uri,
-        type: 'image/jpeg',
-        name: fileName,
-      } as any);
-
-      const xhr = new XMLHttpRequest();
-      
-      xhr.onload = function() {
-        if (xhr.status === 200) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            if (response.success && response.url) {
-              resolve(response.url);
-            } else {
-              reject(new Error(response.error || '服务器返回异常'));
-            }
-          } catch (e) {
-            reject(new Error('解析响应失败'));
-          }
-        } else {
-          reject(new Error(`上传失败，状态码: ${xhr.status}`));
-        }
-      };
-      
-      xhr.onerror = function() {
-        reject(new Error('网络请求失败'));
-      };
-      
-      xhr.ontimeout = function() {
-        reject(new Error('请求超时'));
-      };
-      
-      xhr.open('POST', `${baseUrl}/api/v1/upload`);
-      xhr.timeout = 60000; // 60秒超时
-      xhr.send(formData);
-    });
-  }, []);
-
-  // 上传所有图片
+  // 上传图片到服务器
   const uploadImages = useCallback(async (localUris: string[]): Promise<string[]> => {
-    const uploadedUrls: string[] = [];
-    
-    for (const uri of localUris) {
-      try {
-        const url = await uploadSingleImage(uri);
-        uploadedUrls.push(url);
-      } catch (error) {
-        console.error('上传图片失败:', error);
-        Alert.alert('上传失败', error instanceof Error ? error.message : String(error));
-        return []; // 有一张失败就返回空数组
-      }
-    }
-    
-    return uploadedUrls;
-  }, [uploadSingleImage]);
+    return await uploadMultipleFiles(localUris, 'delivery', 'image/jpeg');
+  }, []);
 
   // 保存送货记录
   const handleSave = useCallback(async () => {
@@ -211,7 +160,8 @@ export default function AddDeliveryRecordScreen() {
       const uploadedUrls = await uploadImages(images);
 
       if (uploadedUrls.length === 0) {
-        return; // 错误已经在 uploadImages 中提示
+        Alert.alert('错误', '图片上传失败，请重试');
+        return;
       }
 
       // 保存送货记录
@@ -447,7 +397,7 @@ export default function AddDeliveryRecordScreen() {
             )}
 
             <ThemedText variant="caption" color={theme.textMuted} style={styles.imageHint}>
-              最多可添加9张图片
+              最多可添加9张图片，图片将上传到服务器并生成分享链接
             </ThemedText>
           </ThemedView>
 
