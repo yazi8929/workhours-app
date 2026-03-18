@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK (Local)
 
 on:
   push:
@@ -33,7 +33,7 @@ jobs:
       - name: Fix package.json dependencies
         run: |
           cd client
-          # 移除有问题的依赖（保留 expo-splash-screen）
+          # 移除有问题的依赖
           sed -i '/react-native-reanimated/d' package.json
           sed -i '/react-native-chart-kit/d' package.json
           sed -i '/expo-location/d' package.json
@@ -42,14 +42,6 @@ jobs:
           sed -i '/react-native-worklets/d' package.json
           echo "=== Fixed package.json ==="
           cat package.json | grep -A 50 '"dependencies"'
-          
-      - name: Fix babel.config.js
-        run: |
-          cd client
-          # 移除 react-native-reanimated/plugin
-          sed -i "/react-native-reanimated\/plugin/d" babel.config.js
-          echo "=== Fixed babel.config.js ==="
-          cat babel.config.js
 
       - name: Install dependencies
         run: |
@@ -59,24 +51,13 @@ jobs:
 
       - name: Create node_modules symlink for Metro
         run: |
-          # Metro bundler 在项目根目录查找 node_modules
-          # 创建符号链接指向 client/node_modules
           ln -s client/node_modules node_modules
           echo "Created node_modules symlink"
-          ls -la node_modules | head -5
 
       - name: Prebuild Android project
         run: |
           cd client
           npx expo prebuild --platform android --clean
-
-      - name: Debug Android directory
-        run: |
-          echo "=== Listing client/android directory ==="
-          ls -la client/android/
-          echo "=== Checking gradlew file ==="
-          file client/android/gradlew || echo "gradlew not found"
-          head -5 client/android/gradlew || echo "Cannot read gradlew"
 
       - name: Build Release APK
         id: build
