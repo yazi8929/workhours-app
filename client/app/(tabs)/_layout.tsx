@@ -25,8 +25,19 @@ export default function TabLayout() {
         },
       }}
     >
+      {/* 首页 - 数据概览 */}
       <Tabs.Screen
         name="index"
+        options={{
+          title: '概览',
+          tabBarIcon: ({ color }) => (
+            <FontAwesome6 name="chart-simple" size={20} color={color} />
+          ),
+        }}
+      />
+      {/* 项目列表 */}
+      <Tabs.Screen
+        name="projects"
         options={{
           title: '项目',
           tabBarIcon: ({ color }) => (
@@ -34,6 +45,7 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* 统计分析 */}
       <Tabs.Screen
         name="stats"
         options={{
@@ -43,6 +55,7 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* 支出记录 */}
       <Tabs.Screen
         name="expenses"
         options={{
@@ -52,12 +65,13 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* 数据管理 */}
       <Tabs.Screen
         name="data"
         options={{
-          title: '数据',
+          title: '我的',
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="database" size={20} color={color} />
+            <FontAwesome6 name="user" size={20} color={color} />
           ),
         }}
       />

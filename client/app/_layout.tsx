@@ -47,6 +47,7 @@ function MainApp({ isAuthenticated, hasPassword, onAuthSuccess }: {
       <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="search" />
         <Stack.Screen name="projects/detail" />
         <Stack.Screen name="projects/add" />
         <Stack.Screen name="projects/edit" />
@@ -83,9 +84,8 @@ export default function RootLayout() {
     checkPassword();
   }, []);
 
-  // 密码验证成功回调 - 关键修复：同时更新 hasPassword
+  // 密码验证成功回调
   const handleAuthSuccess = useCallback(() => {
-    setHasPassword(true);
     setIsAuthenticated(true);
   }, []);
 

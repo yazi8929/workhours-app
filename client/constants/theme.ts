@@ -7,6 +7,8 @@ export const Colors = {
     accent: "#8B5CF6", // Violet-500 - 辅助色，代表创造力
     success: "#10B981", // Emerald-500
     error: "#EF4444",
+    warning: "#F59E0B", // Amber-500 - 警告色
+    info: "#3B82F6", // Blue-500 - 信息色
     backgroundRoot: "#FAFAFA",
     backgroundDefault: "#FFFFFF",
     backgroundTertiary: "#F9FAFB", // 更浅的背景色，用于去线留白
@@ -23,6 +25,8 @@ export const Colors = {
     accent: "#A78BFA", // Violet-400
     success: "#34D399",
     error: "#F87171",
+    warning: "#FBBF24", // Amber-400 - 暗色模式警告色
+    info: "#60A5FA", // Blue-400 - 暗色模式信息色
     backgroundRoot: "#09090B", // 更深的背景色
     backgroundDefault: "#1C1C1E",
     backgroundTertiary: "#1F1F22", // 暗色模式去线留白背景
