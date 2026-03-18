@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import { S3Storage } from "coze-coding-dev-sdk";
+import * as XLSX from 'xlsx';
 
 const app = express();
 const port = process.env.PORT || 9091;
@@ -139,6 +140,140 @@ app.post('/api/v1/file/url', async (req, res) => {
   } catch (error) {
     console.error('获取文件 URL 失败:', error);
     res.status(500).json({ error: '获取文件 URL 失败' });
+  }
+});
+
+/**
+ * 导出Excel报表
+ * 接收数据并生成Excel文件，上传到对象存储后返回下载链接
+ */
+app.post('/api/v1/export/excel', async (req, res) => {
+  try {
+    const { type, data, projectName } = req.body;
+
+    if (!type || !data) {
+      return res.status(400).json({ error: '缺少必要参数' });
+    }
+
+    const workbook = XLSX.utils.book_new();
+    
+    switch (type) {
+      case 'transactions': {
+        // 支出明细表
+        const wsData = [
+          ['日期', '项目', '描述', '金额', '分类', '采购单位', '是否开票', '是否付款'],
+          ...data.map((t: any) => [
+            t.date,
+            t.projectName || '',
+            t.description,
+            t.amount,
+            t.categoryName || '',
+            t.purchaseUnit || '',
+            t.isInvoiced ? '是' : '否',
+            t.isPaid ? '是' : '否',
+          ]),
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        XLSX.utils.book_append_sheet(workbook, ws, '支出明细');
+        break;
+      }
+      case 'projects': {
+        // 项目汇总表
+        const wsData = [
+          ['项目名称', '类型', '状态', '总支出', '总收入', '净利润', '利润率'],
+          ...data.map((p: any) => [
+            p.name,
+            p.typeName,
+            p.statusName,
+            p.totalExpense,
+            p.totalIncome,
+            p.netProfit,
+            p.profitRate ? `${p.profitRate}%` : '-',
+          ]),
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        XLSX.utils.book_append_sheet(workbook, ws, '项目汇总');
+        break;
+      }
+      case 'delivery': {
+        // 送货记录表
+        const wsData = [
+          ['日期', '项目', '描述', '金额', '已开票', '已收款', '待收款'],
+          ...data.map((d: any) => [
+            d.date,
+            d.projectName,
+            d.description,
+            d.amount,
+            d.invoiceAmount,
+            d.receivedAmount,
+            d.amount - d.receivedAmount,
+          ]),
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        XLSX.utils.book_append_sheet(workbook, ws, '送货记录');
+        break;
+      }
+      case 'report': {
+        // 财务报表（多sheet）
+        // 收入明细
+        if (data.incomes && data.incomes.length > 0) {
+          const incomeWs = XLSX.utils.aoa_to_sheet([
+            ['日期', '项目', '金额', '描述'],
+            ...data.incomes.map((i: any) => [i.date, i.projectName, i.amount, i.description || '']),
+          ]);
+          XLSX.utils.book_append_sheet(workbook, incomeWs, '收入明细');
+        }
+        // 支出明细
+        if (data.expenses && data.expenses.length > 0) {
+          const expenseWs = XLSX.utils.aoa_to_sheet([
+            ['日期', '项目', '描述', '金额', '分类'],
+            ...data.expenses.map((e: any) => [e.date, e.projectName, e.description, e.amount, e.categoryName || '']),
+          ]);
+          XLSX.utils.book_append_sheet(workbook, expenseWs, '支出明细');
+        }
+        // 汇总
+        if (data.summary) {
+          const summaryWs = XLSX.utils.aoa_to_sheet([
+            ['统计项目', '金额'],
+            ['总收入', data.summary.totalIncome],
+            ['总支出', data.summary.totalExpense],
+            ['净利润', data.summary.netProfit],
+          ]);
+          XLSX.utils.book_append_sheet(workbook, summaryWs, '汇总');
+        }
+        break;
+      }
+      default:
+        return res.status(400).json({ error: '不支持的导出类型' });
+    }
+
+    // 生成Excel文件buffer
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    
+    // 生成文件名
+    const fileName = `${type}_${projectName || 'report'}_${Date.now()}.xlsx`;
+    
+    // 上传到对象存储
+    const fileKey = await storage.uploadFile({
+      fileContent: buffer,
+      fileName: `exports/${fileName}`,
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+
+    // 获取下载链接
+    const downloadUrl = await storage.generatePresignedUrl({
+      key: fileKey,
+      expireTime: 3600, // 1小时有效
+    });
+
+    res.json({
+      success: true,
+      url: downloadUrl,
+      fileName,
+    });
+  } catch (error) {
+    console.error('导出Excel失败:', error);
+    res.status(500).json({ error: '导出Excel失败' });
   }
 });
 
