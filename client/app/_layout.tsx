@@ -83,8 +83,9 @@ export default function RootLayout() {
     checkPassword();
   }, []);
 
-  // 密码验证成功回调
+  // 密码验证成功回调 - 关键修复：同时更新 hasPassword
   const handleAuthSuccess = useCallback(() => {
+    setHasPassword(true);
     setIsAuthenticated(true);
   }, []);
 
