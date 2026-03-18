@@ -132,7 +132,7 @@ export default function AddDeliveryRecordScreen() {
     setImages(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  // 上传图片到服务器
+    // 上传图片到服务器
   const uploadImages = useCallback(async (localUris: string[]): Promise<string[]> => {
     const uploadedUrls: string[] = [];
     const baseUrl = process.env.EXPO_PUBLIC_BACKEND_BASE_URL;
@@ -145,22 +145,33 @@ export default function AddDeliveryRecordScreen() {
         const formData = new FormData();
         formData.append('file', file as any);
 
+        console.log('上传图片到:', `${baseUrl}/api/v1/upload`);
+        
         const response = await fetch(`${baseUrl}/api/v1/upload`, {
           method: 'POST',
           body: formData,
         });
 
+        console.log('上传响应状态:', response.status);
+        
         const data = await response.json();
+        console.log('上传响应数据:', data);
+        
         if (data.success && data.url) {
           uploadedUrls.push(data.url);
+        } else {
+          console.error('上传失败，服务器返回:', data);
+          Alert.alert('上传失败', data.error || '服务器返回异常');
         }
       } catch (error) {
         console.error('上传图片失败:', error);
+        Alert.alert('上传失败', `网络错误: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
     return uploadedUrls;
   }, []);
+
 
   // 保存送货记录
   const handleSave = useCallback(async () => {
